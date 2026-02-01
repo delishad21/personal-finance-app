@@ -1,0 +1,37 @@
+# Development Dockerfile with hot reload
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for node-gyp, pdf parsing, and Prisma (OpenSSL)
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    cairo-dev \
+    jpeg-dev \
+    pango-dev \
+    giflib-dev \
+    openssl \
+    openssl-dev
+
+# Copy package files
+COPY package*.json ./
+
+# Clean install to avoid version conflicts
+RUN npm ci
+
+# Copy prisma schema
+COPY prisma ./prisma/
+
+# Generate Prisma Client
+RUN npx prisma generate
+
+# Copy source
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Start development server
+CMD ["npm", "run", "dev"]
