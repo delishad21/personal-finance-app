@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: finance-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: financeuser
+      POSTGRES_PASSWORD: financepass
+      POSTGRES_DB: personal_finance
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U financeuser -d personal_finance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finance-network
+
+  # File Parser Microservice
+  file-parser:
+    build:
+      context: ./services/file-parser
+      dockerfile: Dockerfile.dev
+    container_name: finance-parser-dev
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - FRONTEND_URL=http://localhost:3000
+    volumes:
+      # Mount source code for hot reload
+      - ./services/file-parser/src:/app/src
+      - /app/node_modules
+    networks:
+      - finance-network
+
+  # Next.js Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend.dev
+    container_name: finance-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://financeuser:financepass@postgres:5432/personal_finance?schema=public
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=change-this-to-a-random-string-min-32-chars
+      - PARSER_SERVICE_URL=http://file-parser:4000
+      - NODE_ENV=development
+    volumes:
+      # Mount source code for hot reload
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/prisma:/app/prisma
+      - ./frontend/next.config.mjs:/app/next.config.mjs
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      # Exclude node_modules and .next from mounting
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      file-parser:
+        condition: service_started
+    networks:
+      - finance-network
+    command: sh -c "npx prisma migrate deploy && npm run dev"
+
+volumes:
+  postgres-data:
+
+networks:
+  finance-network:
+    driver: bridge
+

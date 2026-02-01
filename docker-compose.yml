@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: finance-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-financeuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-financepass}
+      POSTGRES_DB: ${POSTGRES_DB:-personal_finance}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financeuser} -d ${POSTGRES_DB:-personal_finance}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finance-network
+
+  # File Parser Microservice
+  file-parser:
+    build:
+      context: ./services/file-parser
+      dockerfile: Dockerfile
+    container_name: finance-parser
+    restart: always
+    ports:
+      - "${PARSER_PORT:-4000}:4000"
+    environment:
+      - PORT=4000
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+    networks:
+      - finance-network
+
+  # Next.js Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: finance-frontend
+    restart: always
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-financeuser}:${POSTGRES_PASSWORD:-financepass}@postgres:5432/${POSTGRES_DB:-personal_finance}?schema=public
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - PARSER_SERVICE_URL=http://file-parser:4000
+      - NODE_ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      file-parser:
+        condition: service_started
+    networks:
+      - finance-network
+    command: sh -c "npx prisma migrate deploy && node server.js"
+
+volumes:
+  postgres-data:
+
+networks:
+  finance-network:
+    driver: bridge
+
