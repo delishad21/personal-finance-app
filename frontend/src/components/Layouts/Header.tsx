@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, Search, Bell, User } from "lucide-react";
+import { Menu, Bell, User } from "lucide-react";
 import { useSidebarContext } from "./sidebar-context";
 import { useThemeStore } from "@/lib/stores/themeStore";
 import { useSession, signOut } from "next-auth/react";
@@ -8,7 +8,15 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
-export function Header() {
+interface HeaderProps {
+  title?: string;
+  subtitle?: string;
+}
+
+export function Header({
+  title = "Dashboard",
+  subtitle = "Personal Finance Management",
+}: HeaderProps) {
   const { toggleSidebar, isMobile } = useSidebarContext();
   const { theme, toggleTheme } = useThemeStore();
   const { data: session } = useSession();
@@ -33,25 +41,13 @@ export function Header() {
 
         <div className="max-xl:hidden">
           <h1 className="mb-0.5 text-heading-5 font-bold text-dark dark:text-white">
-            Dashboard
+            {title}
           </h1>
-          <p className="font-medium text-dark-5 dark:text-dark-6">
-            Personal Finance Management
-          </p>
+          <p className="font-medium text-dark-5 dark:text-dark-6">{subtitle}</p>
         </div>
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-2 min-[375px]:gap-4">
-        {/* Search Bar */}
-        <div className="relative w-full max-w-[300px]">
-          <input
-            type="search"
-            placeholder="Search..."
-            className="flex w-full items-center gap-3.5 rounded-full border border-stroke bg-gray-2 py-3 pl-[53px] pr-5 outline-none transition-colors focus-visible:border-primary dark:border-dark-3 dark:bg-dark-2 dark:text-white dark:hover:border-dark-4 dark:hover:bg-dark-3 dark:hover:text-dark-6 dark:focus-visible:border-primary"
-          />
-          <Search className="pointer-events-none absolute left-5 top-1/2 size-5 -translate-y-1/2 text-dark-5 dark:text-dark-6" />
-        </div>
-
         {/* Theme Toggle */}
         <button
           onClick={toggleTheme}

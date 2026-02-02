@@ -20,7 +20,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install dependencies
-RUN npm ci --only=production && \
+RUN npm ci && \
     npm cache clean --force
 
 # Generate Prisma Client
@@ -31,6 +31,11 @@ COPY . .
 
 # Build application
 RUN npm run build
+
+# Run migrations during build (requires DATABASE_URL at build time)
+# Note: In production, run migrations separately before deployment
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
 
 # Production stage
 FROM node:20-alpine AS runner
@@ -55,7 +60,12 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+
+# Copy Prisma files for migrations - need complete installation
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/.bin ./node_modules/.bin
 COPY --from=builder /app/prisma ./prisma
 
 # Set ownership

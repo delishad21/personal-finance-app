@@ -132,10 +132,12 @@ model Transaction {
   userId          String       @map("user_id")
   date            DateTime
   description     String       @db.Text
+  label           String?      @db.Text // User-editable label
   categoryId      String?      @map("category_id")
   amountIn        Decimal?     @map("amount_in") @db.Decimal(12, 2)
   amountOut       Decimal?     @map("amount_out") @db.Decimal(12, 2)
   balance         Decimal?     @db.Decimal(12, 2)
+  accountNumber   String?      @map("account_number") // Account number from statement
   source          String?      // bank name or source
   metadata        Json?        // extra fields from parsing
   importBatchId   String?      @map("import_batch_id")

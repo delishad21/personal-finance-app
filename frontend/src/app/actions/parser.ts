@@ -26,11 +26,23 @@ export async function parseFile(formData: FormData): Promise<ParseResult> {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || "Failed to parse file");
+      const errorText = await response.text();
+      let errorMessage = "Failed to parse file";
+      try {
+        const error = JSON.parse(errorText);
+        errorMessage = error.error || error.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
 
     const result = await response.json();
+
+    if (!result.transactions) {
+      throw new Error("Invalid response from parser service");
+    }
+
     return result;
   } catch (error) {
     console.error("Parse file error:", error);

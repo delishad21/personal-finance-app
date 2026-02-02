@@ -22,7 +22,7 @@ services:
     networks:
       - finance-network
 
-  # File Parser Microservice
+  # File Parser Microservice (Python with pdfplumber)
   file-parser:
     build:
       context: ./services/file-parser
@@ -59,7 +59,6 @@ services:
         condition: service_started
     networks:
       - finance-network
-    command: sh -c "npx prisma migrate deploy && node server.js"
 
 volumes:
   postgres-data:
@@ -67,4 +66,3 @@ volumes:
 networks:
   finance-network:
     driver: bridge
-

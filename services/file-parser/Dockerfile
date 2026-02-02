@@ -1,34 +1,22 @@
-# Build stage
-FROM node:20-alpine AS builder
+# Production Dockerfile for Python file-parser service
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
+# Install system dependencies for pdfplumber
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ghostscript \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-RUN npm ci
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source
-COPY src ./src
-
-# Build
-RUN npm run build
-
-# Production stage
-FROM node:20-alpine
-
-WORKDIR /app
-
-# Install production dependencies only
-COPY package*.json ./
-RUN npm ci --only=production
-
-# Copy built files
-COPY --from=builder /app/dist ./dist
+# Copy application code
+COPY app/ ./app/
 
 # Expose port
 EXPOSE 4000
 
-CMD ["npm", "start"]
+# Run the Flask application
+CMD ["python", "-m", "flask", "--app", "app.main", "run", "--host", "0.0.0.0", "--port", "4000"]

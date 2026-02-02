@@ -1,0 +1,207 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+
+interface DatePickerProps {
+  value: string; // ISO date string (YYYY-MM-DD)
+  onChange: (date: string) => void;
+  className?: string;
+}
+
+const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+export function DatePicker({ value, onChange, className = "" }: DatePickerProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Parse the value into a Date object
+  const selectedDate = value ? new Date(value + "T00:00:00") : new Date();
+  const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
+  const [viewYear, setViewYear] = useState(selectedDate.getFullYear());
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Reset view to selected date when opening
+  useEffect(() => {
+    if (isOpen && value) {
+      const date = new Date(value + "T00:00:00");
+      setViewMonth(date.getMonth());
+      setViewYear(date.getFullYear());
+    }
+  }, [isOpen, value]);
+
+  const getDaysInMonth = (month: number, year: number) => {
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (month: number, year: number) => {
+    return new Date(year, month, 1).getDay();
+  };
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(viewYear - 1);
+    } else {
+      setViewMonth(viewMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(viewYear + 1);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+  };
+
+  const handleSelectDate = (day: number) => {
+    const newDate = new Date(viewYear, viewMonth, day);
+    const isoDate = newDate.toISOString().split("T")[0];
+    onChange(isoDate);
+    setIsOpen(false);
+  };
+
+  const formatDisplayDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr + "T00:00:00");
+    return date.toLocaleDateString("en-SG", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const renderCalendar = () => {
+    const daysInMonth = getDaysInMonth(viewMonth, viewYear);
+    const firstDay = getFirstDayOfMonth(viewMonth, viewYear);
+    const days = [];
+
+    // Empty cells for days before the first day of the month
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<div key={`empty-${i}`} className="w-8 h-8" />);
+    }
+
+    // Days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const isSelected =
+        value &&
+        selectedDate.getDate() === day &&
+        selectedDate.getMonth() === viewMonth &&
+        selectedDate.getFullYear() === viewYear;
+
+      const isToday =
+        new Date().getDate() === day &&
+        new Date().getMonth() === viewMonth &&
+        new Date().getFullYear() === viewYear;
+
+      days.push(
+        <button
+          key={day}
+          type="button"
+          onClick={() => handleSelectDate(day)}
+          className={`w-8 h-8 rounded-full text-sm font-medium transition-colors
+            ${isSelected
+              ? "bg-primary text-white"
+              : isToday
+              ? "bg-primary/20 text-primary dark:text-primary"
+              : "text-dark dark:text-white hover:bg-gray-2 dark:hover:bg-dark-3"
+            }`}
+        >
+          {day}
+        </button>
+      );
+    }
+
+    return days;
+  };
+
+  return (
+    <div ref={containerRef} className={`relative ${className}`}>
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors"
+      >
+        <Calendar className="h-4 w-4 text-dark-5 dark:text-dark-6 mr-2 flex-shrink-0" />
+        <span className="flex-1 font-medium">
+          {value ? formatDisplayDate(value) : "Select date"}
+        </span>
+      </button>
+
+      {/* Calendar Dropdown */}
+      {isOpen && (
+        <div className="absolute top-full left-0 z-50 mt-1 p-3 bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3 rounded-lg shadow-dropdown min-w-[280px]">
+          {/* Month/Year Navigation */}
+          <div className="flex items-center justify-between mb-3">
+            <button
+              type="button"
+              onClick={handlePrevMonth}
+              className="p-1.5 rounded-full hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors"
+            >
+              <ChevronLeft className="h-4 w-4 text-dark dark:text-white" />
+            </button>
+            <span className="text-sm font-semibold text-dark dark:text-white">
+              {MONTHS[viewMonth]} {viewYear}
+            </span>
+            <button
+              type="button"
+              onClick={handleNextMonth}
+              className="p-1.5 rounded-full hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors"
+            >
+              <ChevronRight className="h-4 w-4 text-dark dark:text-white" />
+            </button>
+          </div>
+
+          {/* Day Headers */}
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {DAYS.map((day) => (
+              <div
+                key={day}
+                className="w-8 h-8 flex items-center justify-center text-xs font-medium text-dark-5 dark:text-dark-6"
+              >
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar Grid */}
+          <div className="grid grid-cols-7 gap-1">
+            {renderCalendar()}
+          </div>
+
+          {/* Today Button */}
+          <div className="mt-3 pt-3 border-t border-stroke dark:border-dark-3">
+            <button
+              type="button"
+              onClick={() => {
+                const today = new Date().toISOString().split("T")[0];
+                onChange(today);
+                setIsOpen(false);
+              }}
+              className="w-full py-2 text-sm font-medium text-primary hover:bg-gray-2 dark:hover:bg-dark-3 rounded-lg transition-colors"
+            >
+              Today
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

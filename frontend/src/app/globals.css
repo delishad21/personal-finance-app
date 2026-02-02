@@ -57,4 +57,39 @@
   .custom-scrollbar::-webkit-scrollbar-thumb {
     @apply relative flex-1 rounded-full bg-neutral-200/40 dark:bg-stroke-dark;
   }
+
+  /* Date input styling to match theme */
+  input[type="date"] {
+    color-scheme: light;
+    font-family: inherit;
+  }
+
+  .dark input[type="date"] {
+    color-scheme: dark;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.6;
+    filter: none;
+  }
+
+  .dark input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+
+  input[type="date"]::-webkit-inner-spin-button,
+  input[type="date"]::-webkit-clear-button {
+    display: none;
+  }
+
+  /* Select dropdown styling */
+  select {
+    font-family: inherit;
+  }
+
+  select option {
+    font-family: inherit;
+    padding: 8px;
+  }
 }

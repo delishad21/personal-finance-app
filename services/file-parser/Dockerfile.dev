@@ -1,21 +1,22 @@
-FROM node:20-alpine
+# Development Dockerfile for Python file-parser service
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies for PDF parsing
-RUN apk add --no-cache python3 make g++
+# Install system dependencies for pdfplumber
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ghostscript \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install dependencies
-RUN npm install
-
-# Copy source
-COPY src ./src
+# Copy application code (will be overwritten by volume mount in dev)
+COPY app/ ./app/
 
 # Expose port
 EXPOSE 4000
 
-CMD ["npm", "run", "dev"]
+# Run with auto-reload for development
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "4000", "--reload"]

@@ -3,9 +3,21 @@ node_modules/
 .pnp
 .pnp.js
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
 # Testing
 coverage/
 *.log
+scripts
 
 # Next.js
 .next/
@@ -58,6 +70,8 @@ prisma/migrations/dev.db
 # Uploads (for local dev)
 uploads/
 temp/
+*.pdf
+*.csv
 
 # Documentation (temporary)
 docs/
