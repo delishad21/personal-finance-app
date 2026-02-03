@@ -1,4 +1,4 @@
-import { ImportClient } from "./ImportClient";
+import { ImportClient } from "../../../components/import/ImportClient";
 import { getParserOptions } from "@/lib/parsers";
 import { getCategories } from "@/app/actions/categories";
 

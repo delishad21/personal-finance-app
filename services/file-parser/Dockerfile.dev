@@ -18,5 +18,5 @@ COPY app/ ./app/
 # Expose port
 EXPOSE 4000
 
-# Run with auto-reload for development
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "4000", "--reload"]
+# Run Flask with auto-reload for development
+CMD ["python", "-m", "flask", "--app", "app.main", "run", "--host", "0.0.0.0", "--port", "4000", "--debug"]

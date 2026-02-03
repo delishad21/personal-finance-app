@@ -40,6 +40,31 @@ services:
     networks:
       - finance-network
 
+  # Data Service (Node.js/TypeScript)
+  data-service:
+    build:
+      context: ./services/data-service
+      dockerfile: Dockerfile.dev
+    container_name: finance-data-dev
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    environment:
+      - PORT=4001
+      - DATABASE_URL=postgresql://financeuser:financepass@postgres:5432/personal_finance?schema=public
+      - NODE_ENV=development
+    volumes:
+      # Mount source code for hot reload
+      - ./services/data-service/src:/app/src
+      - ./services/data-service/prisma:/app/prisma
+      # Exclude node_modules
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - finance-network
+
   # Next.js Frontend Application
   frontend:
     build:
@@ -54,6 +79,7 @@ services:
       - NEXTAUTH_URL=http://localhost:3000
       - NEXTAUTH_SECRET=change-this-to-a-random-string-min-32-chars
       - PARSER_SERVICE_URL=http://file-parser:4000
+      - DATA_SERVICE_URL=http://data-service:4001
       - NODE_ENV=development
     volumes:
       # Mount source code for hot reload
@@ -69,6 +95,8 @@ services:
       postgres:
         condition: service_healthy
       file-parser:
+        condition: service_started
+      data-service:
         condition: service_started
     networks:
       - finance-network

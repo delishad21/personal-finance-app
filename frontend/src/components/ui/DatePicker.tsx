@@ -7,15 +7,31 @@ interface DatePickerProps {
   value: string; // ISO date string (YYYY-MM-DD)
   onChange: (date: string) => void;
   className?: string;
+  disabled?: boolean;
 }
 
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
-export function DatePicker({ value, onChange, className = "" }: DatePickerProps) {
+export function DatePicker({
+  value,
+  onChange,
+  className = "",
+  disabled = false,
+}: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -26,7 +42,10 @@ export function DatePicker({ value, onChange, className = "" }: DatePickerProps)
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     }
@@ -116,15 +135,16 @@ export function DatePicker({ value, onChange, className = "" }: DatePickerProps)
           type="button"
           onClick={() => handleSelectDate(day)}
           className={`w-8 h-8 rounded-full text-sm font-medium transition-colors
-            ${isSelected
-              ? "bg-primary text-white"
-              : isToday
-              ? "bg-primary/20 text-primary dark:text-primary"
-              : "text-dark dark:text-white hover:bg-gray-2 dark:hover:bg-dark-3"
+            ${
+              isSelected
+                ? "bg-primary text-white"
+                : isToday
+                  ? "bg-primary/20 text-primary dark:text-primary"
+                  : "text-dark dark:text-white hover:bg-gray-2 dark:hover:bg-dark-3"
             }`}
         >
           {day}
-        </button>
+        </button>,
       );
     }
 
@@ -136,8 +156,9 @@ export function DatePicker({ value, onChange, className = "" }: DatePickerProps)
       {/* Trigger Button */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className="w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         <Calendar className="h-4 w-4 text-dark-5 dark:text-dark-6 mr-2 flex-shrink-0" />
         <span className="flex-1 font-medium">
@@ -146,7 +167,7 @@ export function DatePicker({ value, onChange, className = "" }: DatePickerProps)
       </button>
 
       {/* Calendar Dropdown */}
-      {isOpen && (
+      {isOpen && !disabled && (
         <div className="absolute top-full left-0 z-50 mt-1 p-3 bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3 rounded-lg shadow-dropdown min-w-[280px]">
           {/* Month/Year Navigation */}
           <div className="flex items-center justify-between mb-3">
@@ -182,9 +203,7 @@ export function DatePicker({ value, onChange, className = "" }: DatePickerProps)
           </div>
 
           {/* Calendar Grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {renderCalendar()}
-          </div>
+          <div className="grid grid-cols-7 gap-1">{renderCalendar()}</div>
 
           {/* Today Button */}
           <div className="mt-3 pt-3 border-t border-stroke dark:border-dark-3">

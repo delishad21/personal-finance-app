@@ -48,40 +48,55 @@ export function FileUploadDropzone({
       onDragLeave={handleDrag}
       onDragOver={handleDrag}
       onDrop={handleDrop}
-      className={`flex-1 min-w-[280px] h-24 border-2 border-dashed rounded-lg px-4 flex items-center transition-colors ${
+      className={`w-full h-full border-2 border-dashed rounded-lg flex items-center justify-center transition-colors ${
         dragActive
           ? "border-primary bg-primary/10 dark:bg-primary/20"
           : "border-stroke dark:border-dark-3 hover:border-primary/50"
       }`}
     >
       {file ? (
-        <div className="flex items-center gap-2 w-full">
-          <FileText className="h-4 w-4 text-primary flex-shrink-0" />
-          <span className="text-sm font-medium text-dark dark:text-white truncate flex-1">
-            {file.name}
-          </span>
+        <div className="flex flex-col items-center gap-2 w-full px-8">
+          <FileText className="h-8 w-8 text-primary" />
+          <div className="text-center w-full">
+            <p className="text-sm font-medium text-dark dark:text-white truncate">
+              {file.name}
+            </p>
+            <p className="text-xs text-dark-5 dark:text-dark-6 mt-1">
+              {(file.size / 1024).toFixed(2)} KB
+            </p>
+          </div>
           <button
             onClick={() => onFileSelect(null)}
-            className="text-red hover:text-red/80 text-xs font-medium transition-colors"
+            className="text-red hover:text-red/80 text-sm font-medium transition-colors"
           >
-            Remove
+            Remove File
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
-          <Upload className="h-4 w-4 text-dark-5 dark:text-dark-6" />
-          <span className="text-sm text-dark-5 dark:text-dark-6">
-            Drop file or{" "}
-            <label className="text-primary cursor-pointer hover:underline font-medium">
-              browse
-              <input
-                type="file"
-                accept={accept}
-                onChange={handleFileChange}
-                className="hidden"
-              />
-            </label>
-          </span>
+        <div className="flex flex-col items-center gap-2">
+          <div className="p-3 bg-gray-1 dark:bg-dark-3 rounded-full">
+            <Upload className="h-6 w-6 text-primary" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium text-dark dark:text-white mb-1">
+              Drop your file here
+            </p>
+            <p className="text-xs text-dark-5 dark:text-dark-6">
+              or{" "}
+              <label className="text-primary cursor-pointer hover:underline font-medium">
+                browse files
+                <input
+                  type="file"
+                  accept={accept}
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
+            </p>
+            <p className="text-xs text-dark-5 dark:text-dark-6 mt-2">
+              Supported formats: CSV, PDF
+            </p>
+          </div>
         </div>
       )}
     </div>

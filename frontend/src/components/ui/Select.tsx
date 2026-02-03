@@ -45,7 +45,10 @@ export function Select({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     }
@@ -60,25 +63,25 @@ export function Select({
   };
 
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`${label ? "flex items-center gap-2" : ""} ${className}`}>
       {label && (
         <label className="text-sm font-medium text-dark dark:text-white whitespace-nowrap">
           {label}
         </label>
       )}
-      <div ref={containerRef} className="relative">
+      <div ref={containerRef} className={`relative ${!label ? "w-full" : ""}`}>
         {/* Trigger Button */}
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           className={`
-            flex items-center gap-2 min-w-[180px] text-left
+            flex items-center gap-2 text-left
             bg-white dark:bg-dark-3 border border-stroke dark:border-dark-3 rounded-lg
             text-dark dark:text-white outline-none cursor-pointer
             hover:border-primary dark:hover:border-primary focus:ring-2 focus:ring-primary
             transition-colors
             ${sizeStyles[size]}
-            ${buttonClassName}
+            ${buttonClassName || "min-w-[180px]"}
           `}
         >
           <span className="flex-1 truncate">

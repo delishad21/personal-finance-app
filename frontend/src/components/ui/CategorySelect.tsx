@@ -14,6 +14,7 @@ interface CategorySelectProps {
   categories: Category[];
   onChange: (categoryId: string) => void;
   onAddClick: () => void;
+  disabled?: boolean;
 }
 
 export function CategorySelect({
@@ -21,6 +22,7 @@ export function CategorySelect({
   categories,
   onChange,
   onAddClick,
+  disabled = false,
 }: CategorySelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({
@@ -105,8 +107,9 @@ export function CategorySelect({
       {/* Trigger Button */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-all ${
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className={`w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
           isOpen ? "ring-2 ring-inset ring-primary" : ""
         }`}
       >

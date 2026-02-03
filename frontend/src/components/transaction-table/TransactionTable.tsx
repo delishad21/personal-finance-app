@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, Fragment } from "react";
+import { useState, Fragment } from "react";
 import {
-  CheckCircle,
   ArrowLeft,
   ArrowLeftToLine,
   ChevronRight,
@@ -10,97 +9,15 @@ import {
 } from "lucide-react";
 import { CategorySelect } from "@/components/ui/CategorySelect";
 import { DatePicker } from "@/components/ui/DatePicker";
-import { Button } from "@/components/ui/Button";
-import { TextInput } from "@/components/ui/TextInput";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { ResizableHeader } from "./ResizableHeader";
-
-interface Transaction {
-  date: string;
-  description: string;
-  label?: string;
-  categoryId?: string;
-  amountIn?: number;
-  amountOut?: number;
-  balance?: number;
-  metadata: Record<string, any>;
-}
-
-interface Category {
-  id: string;
-  name: string;
-  color: string;
-}
-
-interface ParseResult {
-  success: boolean;
-  filename: string;
-  parserId: string;
-  transactions: Transaction[];
-  count: number;
-}
-
-interface DuplicateMatch {
-  transaction: {
-    id: string;
-    date: Date;
-    description: string;
-    amountIn: number | null;
-    amountOut: number | null;
-    category?: {
-      name: string;
-      color: string;
-    };
-  };
-  matchScore: number;
-  matchReasons: string[];
-}
-
-interface TransactionTableProps {
-  parsedData: ParseResult;
-  transactions: Transaction[];
-  categories: Category[];
-  accountNumber: string;
-  duplicates?: Map<number, DuplicateMatch[]>;
-  selectedIndices?: Set<number>;
-  nonDuplicateIndices?: Set<number>;
-  isCheckingDuplicates?: boolean;
-  isImporting?: boolean;
-  showDuplicatesOnly?: boolean;
-  onUpdateTransaction: (index: number, field: string, value: any) => void;
-  onAccountNumberChange: (value: string) => void;
-  onImport: () => void;
-  onConfirmImport?: () => void;
-  onSelectAll?: () => void;
-  onDeselectAll?: () => void;
-  onToggleSelection?: (index: number) => void;
-  onAddCategoryClick: () => void;
-  onBack?: () => void;
-}
-
-const DEFAULT_COLUMN_WIDTHS = {
-  checkbox: 50,
-  expand: 40,
-  date: 140,
-  label: 200,
-  description: 350,
-  category: 180,
-  amountIn: 120,
-  amountOut: 120,
-};
-
-const NEXT_COLUMN: Record<string, string | null> = {
-  checkbox: "expand",
-  expand: "date",
-  date: "label",
-  label: "description",
-  description: "category",
-  category: "amountIn",
-  amountIn: "amountOut",
-  amountOut: null,
-};
-
-const MIN_COLUMN_WIDTH = 60;
+import { TransactionTableToolbar } from "./TransactionTableToolbar";
+import { DuplicateWarningBanner } from "./DuplicateWarningBanner";
+import { TransactionRowExpanded } from "./TransactionRowExpanded";
+import { DuplicateMatchList } from "./DuplicateMatchList";
+import { useColumnResize } from "./hooks/useColumnResize";
+import { DEFAULT_COLUMN_WIDTHS } from "./config/columns";
+import type { TransactionTableProps } from "./types";
 
 export function TransactionTable({
   parsedData,
@@ -124,13 +41,9 @@ export function TransactionTable({
   onBack,
 }: TransactionTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
-
-  const resizingColumn = useRef<string | null>(null);
-  const nextColumn = useRef<string | null>(null);
-  const startX = useRef<number>(0);
-  const startWidthLeft = useRef<number>(0);
-  const startWidthRight = useRef<number>(0);
+  const { columnWidths, handleResizeStart } = useColumnResize(
+    DEFAULT_COLUMN_WIDTHS,
+  );
 
   const toggleRowExpanded = (index: number) => {
     const newExpanded = new Set(expandedRows);
@@ -152,160 +65,28 @@ export function TransactionTable({
     });
   };
 
-  const handleResizeStart = (columnKey: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    const rightColumn = NEXT_COLUMN[columnKey];
-    if (!rightColumn) return;
-
-    resizingColumn.current = columnKey;
-    nextColumn.current = rightColumn;
-    startX.current = e.clientX;
-    startWidthLeft.current =
-      columnWidths[columnKey as keyof typeof columnWidths];
-    startWidthRight.current =
-      columnWidths[rightColumn as keyof typeof columnWidths];
-
-    document.addEventListener("mousemove", handleResizeMove);
-    document.addEventListener("mouseup", handleResizeEnd);
-  };
-
-  const handleResizeMove = useCallback((e: MouseEvent) => {
-    if (!resizingColumn.current || !nextColumn.current) return;
-
-    const diff = e.clientX - startX.current;
-
-    let newLeftWidth = startWidthLeft.current + diff;
-    let newRightWidth = startWidthRight.current - diff;
-
-    if (newLeftWidth < MIN_COLUMN_WIDTH) {
-      newLeftWidth = MIN_COLUMN_WIDTH;
-      newRightWidth =
-        startWidthLeft.current + startWidthRight.current - MIN_COLUMN_WIDTH;
-    }
-    if (newRightWidth < MIN_COLUMN_WIDTH) {
-      newRightWidth = MIN_COLUMN_WIDTH;
-      newLeftWidth =
-        startWidthLeft.current + startWidthRight.current - MIN_COLUMN_WIDTH;
-    }
-
-    setColumnWidths((prev) => ({
-      ...prev,
-      [resizingColumn.current!]: newLeftWidth,
-      [nextColumn.current!]: newRightWidth,
-    }));
-  }, []);
-
-  const handleResizeEnd = useCallback(() => {
-    resizingColumn.current = null;
-    document.removeEventListener("mousemove", handleResizeMove);
-    document.removeEventListener("mouseup", handleResizeEnd);
-  }, [handleResizeMove]);
-
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex-shrink-0 py-3 mb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {onBack && (
-              <Button variant="secondary" size="sm" onClick={onBack}>
-                ← Back
-              </Button>
-            )}
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green" />
-              <span className="font-semibold text-dark dark:text-white">
-                {showDuplicatesOnly
-                  ? `${duplicates?.size || 0} Potential Duplicate${(duplicates?.size || 0) !== 1 ? "s" : ""}`
-                  : `${transactions.length} Transaction${transactions.length !== 1 ? "s" : ""}`}
-              </span>
-            </div>
-            <div className="h-6 w-px bg-stroke dark:bg-dark-3" />
-            <div className="text-sm text-dark-5 dark:text-dark-6">
-              <span className="font-medium text-dark dark:text-white">
-                {parsedData.filename}
-              </span>
-              <span className="mx-2 text-dark-5">•</span>
-              <span>{parsedData.parserId}</span>
-            </div>
-          </div>
+      <TransactionTableToolbar
+        parsedData={parsedData}
+        accountNumber={accountNumber}
+        selectedCount={selectedIndices?.size || 0}
+        totalCount={transactions.length}
+        duplicateCount={duplicates?.size || 0}
+        showDuplicatesOnly={showDuplicatesOnly}
+        isCheckingDuplicates={isCheckingDuplicates || false}
+        isImporting={isImporting || false}
+        onBack={onBack}
+        onImport={onImport}
+        onConfirmImport={onConfirmImport}
+        onAccountNumberChange={onAccountNumberChange}
+      />
 
-          <div className="flex items-center gap-4">
-            {!showDuplicatesOnly && (
-              <TextInput
-                label="Account Number:"
-                size="sm"
-                value={accountNumber}
-                onChange={(e) => onAccountNumberChange(e.target.value)}
-                placeholder="Enter account number"
-              />
-            )}
-
-            {showDuplicatesOnly ? (
-              /* Duplicate handling stage */
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-orange-600 dark:text-orange-400 font-medium">
-                  {selectedIndices?.size || 0} selected to import
-                </span>
-                <Button
-                  variant="success"
-                  onClick={onConfirmImport}
-                  disabled={isImporting}
-                  leftIcon={<CheckCircle className="h-4 w-4" />}
-                >
-                  {isImporting ? "Importing..." : "Import All"}
-                </Button>
-              </div>
-            ) : (
-              /* Review stage */
-              <Button
-                variant="success"
-                onClick={onImport}
-                disabled={
-                  isCheckingDuplicates || (selectedIndices?.size || 0) === 0
-                }
-                leftIcon={<CheckCircle className="h-4 w-4" />}
-              >
-                {isCheckingDuplicates
-                  ? "Checking..."
-                  : `Import Selected (${selectedIndices?.size || 0})`}
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Info banner for duplicates view */}
       {showDuplicatesOnly && duplicates && duplicates.size > 0 && (
-        <div className="flex-shrink-0 mb-3 p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 mt-0.5">
-              <svg
-                className="h-5 w-5 text-orange-600 dark:text-orange-400"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-semibold text-orange-900 dark:text-orange-100 mb-1">
-                Potential Duplicates Detected
-              </h3>
-              <p className="text-sm text-orange-800 dark:text-orange-200">
-                These transactions may already exist in your account. Review
-                each one and select which ones you want to import. Your other{" "}
-                {nonDuplicateIndices.size} transaction
-                {nonDuplicateIndices.size !== 1 ? "s" : ""} will be imported
-                automatically.
-              </p>
-            </div>
-          </div>
-        </div>
+        <DuplicateWarningBanner
+          duplicateCount={duplicates.size}
+          nonDuplicateCount={nonDuplicateIndices.size}
+        />
       )}
 
       {/* Table */}
@@ -577,88 +358,14 @@ export function TransactionTable({
                     </tr>
 
                     {expandedRows.has(index) && (
-                      <tr className="border-b border-stroke dark:border-dark-3 bg-gray-1 dark:bg-dark-3/30">
-                        <td colSpan={8} className="py-3 px-4">
-                          <div className="text-sm space-y-1 pl-8">
-                            <div className="font-medium text-dark dark:text-white mb-2">
-                              Raw Data
-                            </div>
-                            {Object.entries(transaction.metadata).map(
-                              ([key, value]) => (
-                                <div
-                                  key={key}
-                                  className="flex gap-2 text-dark-5 dark:text-dark-6"
-                                >
-                                  <span className="font-medium capitalize">
-                                    {key.replace(/([A-Z])/g, " $1").trim()}:
-                                  </span>
-                                  <span className="text-dark dark:text-white">
-                                    {JSON.stringify(value)}
-                                  </span>
-                                </div>
-                              ),
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                      <TransactionRowExpanded
+                        transaction={transaction}
+                        colSpan={8}
+                      />
                     )}
 
-                    {/* Duplicate warning row */}
                     {hasDuplicates && (
-                      <tr className="bg-orange-100 dark:bg-orange-950/30 border-b border-orange-200 dark:border-orange-900">
-                        <td
-                          colSpan={duplicates && duplicates.size > 0 ? 8 : 7}
-                          className="py-2 px-4"
-                        >
-                          <div className="flex items-start gap-2">
-                            <div className="text-orange-600 dark:text-orange-400 font-semibold text-sm mt-0.5">
-                              ⚠ Potential Duplicate
-                              {rowDuplicates.length > 1 ? "s" : ""}:
-                            </div>
-                            <div className="flex-1 space-y-2">
-                              {rowDuplicates
-                                .slice(0, 3)
-                                .map((match, matchIndex) => (
-                                  <div
-                                    key={matchIndex}
-                                    className="text-sm text-dark dark:text-white"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-medium">
-                                        Match{" "}
-                                        {(match.matchScore * 100).toFixed(0)}%:
-                                      </span>
-                                      <span>
-                                        {new Date(
-                                          match.transaction.date,
-                                        ).toLocaleDateString()}
-                                      </span>
-                                      <span className="text-dark-5">•</span>
-                                      <span className="truncate">
-                                        {match.transaction.description}
-                                      </span>
-                                      <span className="text-dark-5">•</span>
-                                      <span className="font-mono">
-                                        {match.transaction.amountIn
-                                          ? `+$${match.transaction.amountIn}`
-                                          : `-$${match.transaction.amountOut}`}
-                                      </span>
-                                    </div>
-                                    <div className="text-xs text-dark-5 dark:text-dark-6 mt-1">
-                                      {match.matchReasons.join(", ")}
-                                    </div>
-                                  </div>
-                                ))}
-                              {rowDuplicates.length > 3 && (
-                                <div className="text-xs text-dark-5 dark:text-dark-6">
-                                  +{rowDuplicates.length - 3} more match
-                                  {rowDuplicates.length - 3 > 1 ? "es" : ""}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
+                      <DuplicateMatchList matches={rowDuplicates} colSpan={8} />
                     )}
                   </Fragment>
                 );
