@@ -8,11 +8,11 @@ export function DuplicateWarningBanner({
   nonDuplicateCount,
 }: DuplicateWarningBannerProps) {
   return (
-    <div className="flex-shrink-0 mb-3 p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+    <div className="flex-shrink-0 mb-3 p-4 bg-orange-light-4 dark:bg-orange-dark-3/20 border border-orange-light-2 dark:border-orange-dark-1 rounded-lg">
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-0.5">
           <svg
-            className="h-5 w-5 text-orange-600 dark:text-orange-400"
+            className="h-5 w-5 text-orange-dark dark:text-orange-light"
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -24,10 +24,10 @@ export function DuplicateWarningBanner({
           </svg>
         </div>
         <div className="flex-1">
-          <h3 className="text-sm font-semibold text-orange-900 dark:text-orange-100 mb-1">
+          <h3 className="text-sm font-semibold text-orange-dark-2 dark:text-orange-light-3 mb-1">
             Potential Duplicates Detected
           </h3>
-          <p className="text-sm text-orange-800 dark:text-orange-200">
+          <p className="text-sm text-orange-dark-1 dark:text-orange-light-2">
             These transactions may already exist in your account. Review each
             one and select which ones you want to import. Your other{" "}
             {nonDuplicateCount} transaction

@@ -4,7 +4,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-gray-1 dark:from-gray-dark dark:to-[#020D1A]">
+    <div className="min-h-screen bg-gradient-to-b from-white to-gray-1 dark:from-gray-dark dark:to-dark-bg">
       {/* Header */}
       <header className="border-b border-stroke bg-white/80 backdrop-blur-sm dark:border-stroke-dark dark:bg-gray-dark/80">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">

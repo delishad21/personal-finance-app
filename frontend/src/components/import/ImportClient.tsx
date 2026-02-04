@@ -138,7 +138,7 @@ export function ImportClient({
 
       const initialTransactions = result.transactions.map((t) => ({
         ...t,
-        label: "",
+        label: t.label && t.label.trim().length > 0 ? t.label : t.description,
       }));
       setEditedTransactions(initialTransactions);
 

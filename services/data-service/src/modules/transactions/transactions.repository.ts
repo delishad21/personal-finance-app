@@ -36,8 +36,12 @@ export class TransactionRepository {
     filters?: {
       dateFrom?: Date;
       dateTo?: Date;
-      categoryId?: string;
+      categoryIds?: string[];
       search?: string;
+      transactionType?: "income" | "expense";
+      dateOrder?: "asc" | "desc";
+      minAmount?: number;
+      maxAmount?: number;
       limit?: number;
       offset?: number;
     },
@@ -50,8 +54,8 @@ export class TransactionRepository {
       if (filters.dateTo) where.date.lte = filters.dateTo;
     }
 
-    if (filters?.categoryId) {
-      where.categoryId = filters.categoryId;
+    if (filters?.categoryIds && filters.categoryIds.length > 0) {
+      where.categoryId = { in: filters.categoryIds };
     }
 
     if (filters?.search) {
@@ -61,6 +65,65 @@ export class TransactionRepository {
       ];
     }
 
+    if (filters?.transactionType) {
+      if (filters.transactionType === "income") {
+        where.amountIn = { not: null };
+      } else if (filters.transactionType === "expense") {
+        where.amountOut = { not: null };
+      }
+    }
+
+    // Handle amount filtering - check both amountIn and amountOut
+    if (filters?.minAmount !== undefined || filters?.maxAmount !== undefined) {
+      const amountConditions: any[] = [];
+
+      if (filters.minAmount !== undefined) {
+        amountConditions.push(
+          { amountIn: { gte: filters.minAmount } },
+          { amountOut: { gte: filters.minAmount } },
+        );
+      }
+
+      if (filters.maxAmount !== undefined) {
+        amountConditions.push(
+          { amountIn: { lte: filters.maxAmount } },
+          { amountOut: { lte: filters.maxAmount } },
+        );
+      }
+
+      where.OR = where.OR || [];
+      if (filters.minAmount !== undefined && filters.maxAmount !== undefined) {
+        // Both min and max: amount must be in range
+        where.OR.push(
+          {
+            AND: [
+              { amountIn: { gte: filters.minAmount, lte: filters.maxAmount } },
+            ],
+          },
+          {
+            AND: [
+              { amountOut: { gte: filters.minAmount, lte: filters.maxAmount } },
+            ],
+          },
+        );
+      } else if (filters.minAmount !== undefined) {
+        // Only min
+        where.OR.push(
+          { amountIn: { gte: filters.minAmount } },
+          { amountOut: { gte: filters.minAmount } },
+        );
+      } else if (filters.maxAmount !== undefined) {
+        // Only max
+        where.OR.push(
+          { amountIn: { lte: filters.maxAmount } },
+          { amountOut: { lte: filters.maxAmount } },
+        );
+      }
+    }
+
+    const orderBy =
+      filters?.dateOrder === "asc" ? { date: "asc" } : { date: "desc" };
+
     const [transactions, total] = await Promise.all([
       prisma.transaction.findMany({
         where,
@@ -68,7 +131,7 @@ export class TransactionRepository {
           category: true,
           importBatch: true,
         },
-        orderBy: { date: "desc" },
+        orderBy,
         take: filters?.limit || 50,
         skip: filters?.offset || 0,
       }),
@@ -76,6 +139,19 @@ export class TransactionRepository {
     ]);
 
     return { transactions, total };
+  }
+
+  static async getYears(userId: string) {
+    const transactions = await prisma.transaction.findMany({
+      where: { userId },
+      select: { date: true },
+    });
+
+    const years = Array.from(
+      new Set(transactions.map((t) => t.date.getFullYear())),
+    ).sort((a, b) => b - a);
+
+    return years;
   }
 
   /**

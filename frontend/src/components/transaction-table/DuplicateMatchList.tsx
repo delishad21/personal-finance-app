@@ -10,20 +10,20 @@ export function DuplicateMatchList({
   colSpan,
 }: DuplicateMatchListProps) {
   return (
-    <tr className="bg-orange-100 dark:bg-orange-950/30 border-b border-orange-200 dark:border-orange-900">
+    <tr className="bg-orange-light-3 dark:bg-orange-dark-3/30 border-b border-orange-light-2 dark:border-orange-dark-1">
       <td colSpan={colSpan} className="py-2 px-4">
         <div className="pl-8">
-          <div className="text-sm font-semibold text-orange-900 dark:text-orange-100 mb-2">
+          <div className="text-sm font-semibold text-orange-dark-2 dark:text-orange-light-3 mb-2">
             ⚠️ Potential Duplicates Found
           </div>
-          <div className="text-xs text-orange-800 dark:text-orange-200 mb-2">
+          <div className="text-xs text-orange-dark-1 dark:text-orange-light-2 mb-2">
             This transaction may already exist. Review the matches below:
           </div>
           <div className="space-y-2">
             {matches.map((match, matchIndex) => (
               <div
                 key={matchIndex}
-                className="p-2 bg-white dark:bg-dark-2 rounded border border-orange-200 dark:border-orange-800"
+                className="p-2 bg-white dark:bg-dark-2 rounded border border-orange-light-2 dark:border-orange-dark-1"
               >
                 <div className="flex items-start gap-4">
                   <div className="flex-1 space-y-1">
@@ -44,9 +44,9 @@ export function DuplicateMatchList({
                         <span className="text-dark-5">•</span>
                         <span className="font-mono">
                           {match.transaction.amountIn
-                            ? `+${match.transaction.amountIn.toFixed(2)}`
+                            ? `+${Number(match.transaction.amountIn).toFixed(2)}`
                             : match.transaction.amountOut
-                              ? `-${match.transaction.amountOut.toFixed(2)}`
+                              ? `-${Number(match.transaction.amountOut).toFixed(2)}`
                               : "-"}
                         </span>
                         {match.transaction.category && (
@@ -69,7 +69,7 @@ export function DuplicateMatchList({
                       {match.matchReasons.map((reason, i) => (
                         <span
                           key={i}
-                          className="text-xs px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded"
+                          className="text-xs px-2 py-0.5 bg-orange-light-3 dark:bg-orange-dark-1/30 text-orange-dark dark:text-orange-light-1 rounded"
                         >
                           {reason}
                         </span>

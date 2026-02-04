@@ -10,6 +10,7 @@ interface ParseResult {
   transactions: Array<{
     date: string;
     description: string;
+    label?: string;
     amountIn?: number;
     amountOut?: number;
     balance?: number;

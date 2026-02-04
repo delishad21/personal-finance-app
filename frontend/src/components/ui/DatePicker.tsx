@@ -158,9 +158,9 @@ export function DatePicker({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className="w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        className="w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
-        <Calendar className="h-4 w-4 text-dark-5 dark:text-dark-6 mr-2 flex-shrink-0" />
+        <Calendar className="h-4 w-4 text-dark-5 dark:text-dark-6 mr-3 shrink-0" />
         <span className="flex-1 font-medium">
           {value ? formatDisplayDate(value) : "Select date"}
         </span>
@@ -168,7 +168,7 @@ export function DatePicker({
 
       {/* Calendar Dropdown */}
       {isOpen && !disabled && (
-        <div className="absolute top-full left-0 z-50 mt-1 p-3 bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3 rounded-lg shadow-dropdown min-w-[280px]">
+        <div className="absolute top-full left-0 z-50 mt-1 p-3 bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3 rounded-lg shadow-dropdown min-w-70">
           {/* Month/Year Navigation */}
           <div className="flex items-center justify-between mb-3">
             <button

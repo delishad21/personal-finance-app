@@ -129,8 +129,12 @@ export async function commitImport(
 export async function getTransactions(filters?: {
   dateFrom?: Date;
   dateTo?: Date;
-  categoryId?: string;
+  categoryIds?: string[];
   search?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  transactionType?: "income" | "expense";
+  dateOrder?: "asc" | "desc";
   limit?: number;
   offset?: number;
 }) {
@@ -143,8 +147,18 @@ export async function getTransactions(filters?: {
     userId: session.user.id,
     ...(filters?.dateFrom && { dateFrom: filters.dateFrom.toISOString() }),
     ...(filters?.dateTo && { dateTo: filters.dateTo.toISOString() }),
-    ...(filters?.categoryId && { categoryId: filters.categoryId }),
+    ...(filters?.categoryIds && {
+      categoryIds: filters.categoryIds.join(","),
+    }),
     ...(filters?.search && { search: filters.search }),
+    ...(filters?.minAmount !== undefined && {
+      minAmount: filters.minAmount.toString(),
+    }),
+    ...(filters?.maxAmount !== undefined && {
+      maxAmount: filters.maxAmount.toString(),
+    }),
+    ...(filters?.transactionType && { transactionType: filters.transactionType }),
+    ...(filters?.dateOrder && { dateOrder: filters.dateOrder }),
     ...(filters?.limit && { limit: filters.limit.toString() }),
     ...(filters?.offset && { offset: filters.offset.toString() }),
   });
@@ -159,6 +173,24 @@ export async function getTransactions(filters?: {
   }
 
   return response.json();
+}
+
+export async function getTransactionYears(): Promise<number[]> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return [];
+  }
+
+  const response = await fetch(
+    `${DATA_SERVICE_URL}/api/transactions/years?userId=${session.user.id}`,
+  );
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json();
+  return data.years || [];
 }
 
 /**

@@ -244,7 +244,7 @@ export function TransactionTable({
             {showDuplicatesOnly ? (
               /* Duplicate handling stage */
               <div className="flex items-center gap-2">
-                <span className="text-sm text-orange-600 dark:text-orange-400 font-medium">
+                <span className="text-sm text-orange-dark dark:text-orange-light font-medium">
                   {selectedIndices?.size || 0} selected to import
                 </span>
                 <Button
@@ -277,11 +277,11 @@ export function TransactionTable({
 
       {/* Info banner for duplicates view */}
       {showDuplicatesOnly && duplicates && duplicates.size > 0 && (
-        <div className="flex-shrink-0 mb-3 p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+        <div className="flex-shrink-0 mb-3 p-4 bg-orange-light-4 dark:bg-orange-dark-3/20 border border-orange-light-2 dark:border-orange-dark-1 rounded-lg">
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0 mt-0.5">
               <svg
-                className="h-5 w-5 text-orange-600 dark:text-orange-400"
+                className="h-5 w-5 text-orange-dark dark:text-orange-light"
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >
@@ -293,10 +293,10 @@ export function TransactionTable({
               </svg>
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-semibold text-orange-900 dark:text-orange-100 mb-1">
+              <h3 className="text-sm font-semibold text-orange-dark-2 dark:text-orange-light-3 mb-1">
                 Potential Duplicates Detected
               </h3>
-              <p className="text-sm text-orange-800 dark:text-orange-200">
+              <p className="text-sm text-orange-dark-1 dark:text-orange-light-2">
                 These transactions may already exist in your account. Review
                 each one and select which ones you want to import. Your other{" "}
                 {nonDuplicateIndices.size} transaction
@@ -418,7 +418,7 @@ export function TransactionTable({
                     <tr
                       className={`border-b border-stroke dark:border-dark-3 hover:bg-gray-1 dark:hover:bg-dark-3/50 transition-colors group ${
                         hasDuplicates
-                          ? "bg-orange-50 dark:bg-orange-950/20"
+                          ? "bg-orange-light-4 dark:bg-orange-dark-3/20"
                           : ""
                       }`}
                     >
@@ -605,13 +605,13 @@ export function TransactionTable({
 
                     {/* Duplicate warning row */}
                     {hasDuplicates && (
-                      <tr className="bg-orange-100 dark:bg-orange-950/30 border-b border-orange-200 dark:border-orange-900">
+                      <tr className="bg-orange-light-3 dark:bg-orange-dark-3/30 border-b border-orange-light-2 dark:border-orange-dark-1">
                         <td
                           colSpan={duplicates && duplicates.size > 0 ? 8 : 7}
                           className="py-2 px-4"
                         >
                           <div className="flex items-start gap-2">
-                            <div className="text-orange-600 dark:text-orange-400 font-semibold text-sm mt-0.5">
+                            <div className="text-orange-dark dark:text-orange-light font-semibold text-sm mt-0.5">
                               ⚠ Potential Duplicate
                               {rowDuplicates.length > 1 ? "s" : ""}:
                             </div>

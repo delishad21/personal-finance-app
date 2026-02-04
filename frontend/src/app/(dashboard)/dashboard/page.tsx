@@ -1,14 +1,12 @@
-import { Box, Typography } from '@mui/material';
-
 export default function DashboardPage() {
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
+    <div>
+      <h2 className="mb-4 text-2xl font-semibold text-dark dark:text-white">
         Dashboard
-      </Typography>
-      <Typography variant="body1" color="text.secondary">
+      </h2>
+      <p className="text-dark-5 dark:text-dark-6">
         Welcome to your Personal Finance App
-      </Typography>
-    </Box>
+      </p>
+    </div>
   );
 }

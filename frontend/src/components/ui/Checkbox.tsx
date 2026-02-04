@@ -24,7 +24,7 @@ export function Checkbox({
       aria-checked={indeterminate ? "mixed" : checked}
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
-      className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+      className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all ${
         checked || indeterminate
           ? "bg-primary border-primary"
           : "bg-white dark:bg-dark-2 border-stroke dark:border-dark-3 hover:border-primary"

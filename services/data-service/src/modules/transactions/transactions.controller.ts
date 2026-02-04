@@ -40,8 +40,10 @@ const GetTransactionsSchema = z.object({
   userId: z.string(),
   dateFrom: z.string().optional(),
   dateTo: z.string().optional(),
-  categoryId: z.string().optional(),
+  categoryIds: z.string().optional(),
   search: z.string().optional(),
+  minAmount: z.number().optional(),
+  maxAmount: z.number().optional(),
   limit: z.number().optional(),
   offset: z.number().optional(),
 });
@@ -105,8 +107,24 @@ transactionRouter.get("/", async (req: Request, res: Response) => {
       dateTo: req.query.dateTo
         ? new Date(req.query.dateTo as string)
         : undefined,
-      categoryId: req.query.categoryId as string | undefined,
+      categoryIds: req.query.categoryIds
+        ? String(req.query.categoryIds)
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean)
+        : undefined,
       search: req.query.search as string | undefined,
+      transactionType: req.query.transactionType as
+        | "income"
+        | "expense"
+        | undefined,
+      dateOrder: req.query.dateOrder as "asc" | "desc" | undefined,
+      minAmount: req.query.minAmount
+        ? parseFloat(req.query.minAmount as string)
+        : undefined,
+      maxAmount: req.query.maxAmount
+        ? parseFloat(req.query.maxAmount as string)
+        : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
       offset: req.query.offset
         ? parseInt(req.query.offset as string)
@@ -119,6 +137,24 @@ transactionRouter.get("/", async (req: Request, res: Response) => {
     );
 
     res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/transactions/years
+ * Get distinct transaction years for a user
+ */
+transactionRouter.get("/years", async (req: Request, res: Response) => {
+  try {
+    const userId = req.query.userId as string;
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const years = await TransactionService.getTransactionYears(userId);
+    res.json({ years });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

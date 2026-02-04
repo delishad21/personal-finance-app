@@ -73,7 +73,7 @@ export function TransactionTableToolbar({
           {showDuplicatesOnly ? (
             /* Duplicate handling stage */
             <div className="flex items-center gap-2">
-              <span className="text-sm text-orange-600 dark:text-orange-400 font-medium">
+              <span className="text-sm text-orange-dark dark:text-orange-light font-medium">
                 {selectedCount} selected to import
               </span>
               <Button

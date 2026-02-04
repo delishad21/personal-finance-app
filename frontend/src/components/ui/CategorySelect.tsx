@@ -109,14 +109,14 @@ export function CategorySelect({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className={`w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
+        className={`w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-all disabled:cursor-not-allowed disabled:hover:bg-transparent ${
           isOpen ? "ring-2 ring-inset ring-primary" : ""
         }`}
       >
         {selectedCategory ? (
           <>
             <div
-              className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0"
+              className="w-2.5 h-2.5 rounded-full mr-2 shrink-0"
               style={{ backgroundColor: selectedCategory.color }}
             />
             <span className="flex-1 truncate font-medium">
@@ -129,7 +129,7 @@ export function CategorySelect({
           </span>
         )}
         <ChevronDown
-          className={`h-4 w-4 text-dark-5 dark:text-dark-6 ml-2 flex-shrink-0 transition-transform ${
+          className={`h-4 w-4 text-dark-5 dark:text-dark-6 ml-2 shrink-0 transition-transform ${
             isOpen ? "rotate-180" : ""
           }`}
         />
@@ -156,7 +156,7 @@ export function CategorySelect({
             onClick={() => handleSelect("")}
             className="w-full flex items-center px-4 py-2.5 text-sm text-left hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors"
           >
-            <div className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0 bg-dark-5 dark:bg-dark-6" />
+            <div className="w-2.5 h-2.5 rounded-full mr-2 shrink-0 bg-dark-5 dark:bg-dark-6" />
             <span className="flex-1 text-dark dark:text-white">
               Uncategorized
             </span>
@@ -175,7 +175,7 @@ export function CategorySelect({
               className="w-full flex items-center px-4 py-2.5 text-sm text-left hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors"
             >
               <div
-                className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0"
+                className="w-2.5 h-2.5 rounded-full mr-2 shrink-0"
                 style={{ backgroundColor: cat.color }}
               />
               <span className="flex-1 text-dark dark:text-white">

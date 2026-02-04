@@ -42,7 +42,7 @@ export default function DashboardLayout({
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
 
-        <div className="flex-1 flex flex-col overflow-hidden bg-gray-2 dark:bg-[#020d1a]">
+        <div className="flex-1 flex flex-col overflow-hidden bg-gray-2 dark:bg-dark-bg">
           <Header title={config.title} subtitle={config.subtitle} />
 
           <main className="flex-1 overflow-y-auto overflow-x-hidden">

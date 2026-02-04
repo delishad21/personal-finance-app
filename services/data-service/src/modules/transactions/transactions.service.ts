@@ -59,6 +59,23 @@ export class TransactionService {
     },
   ): Promise<ImportResult> {
     try {
+      const uncategorized = await prisma.category.upsert({
+        where: {
+          userId_name: {
+            userId,
+            name: "Uncategorized",
+          },
+        },
+        update: {},
+        create: {
+          userId,
+          name: "Uncategorized",
+          color: "#9ca3af",
+          icon: "label",
+          isDefault: true,
+        },
+      });
+
       let importBatchId: string | undefined;
 
       // Create import batch if info provided
@@ -82,9 +99,15 @@ export class TransactionService {
       }
 
       // Filter transactions by selected indices
-      const selectedTransactions = transactions.filter((_, index) =>
-        selectedIndices.includes(index),
-      );
+      const selectedTransactions = transactions
+        .filter((_, index) => selectedIndices.includes(index))
+        .map((transaction) => ({
+          ...transaction,
+          categoryId:
+            transaction.categoryId && transaction.categoryId.trim().length > 0
+              ? transaction.categoryId
+              : uncategorized.id,
+        }));
 
       // Import selected transactions
       const result = await TransactionRepository.createMany(
@@ -115,13 +138,21 @@ export class TransactionService {
     filters?: {
       dateFrom?: Date;
       dateTo?: Date;
-      categoryId?: string;
+      categoryIds?: string[];
       search?: string;
+      transactionType?: "income" | "expense";
+      dateOrder?: "asc" | "desc";
+      minAmount?: number;
+      maxAmount?: number;
       limit?: number;
       offset?: number;
     },
   ) {
     return TransactionRepository.findMany(userId, filters);
+  }
+
+  static async getTransactionYears(userId: string) {
+    return TransactionRepository.getYears(userId);
   }
 
   /**

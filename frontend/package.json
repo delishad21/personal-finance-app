@@ -17,14 +17,8 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.4.0",
     "@emotion/cache": "^11.11.0",
-    "@emotion/react": "^11.11.4",
-    "@emotion/styled": "^11.11.5",
-    "@mui/icons-material": "^5.15.20",
-    "@mui/material": "^5.15.20",
-    "@mui/material-nextjs": "^5.15.11",
-    "@mui/x-data-grid": "^7.6.2",
-    "@mui/x-date-pickers": "^7.6.2",
     "@prisma/client": "5.15.0",
+    "@tailwindcss/postcss": "^4.1.18",
     "@tanstack/react-query": "^5.45.1",
     "apexcharts": "^4.5.0",
     "bcryptjs": "^2.4.3",
@@ -61,7 +55,7 @@
     "prettier": "^3.4.2",
     "prettier-plugin-tailwindcss": "^0.6.11",
     "prisma": "5.15.0",
-    "tailwindcss": "^3.4.16",
+    "tailwindcss": "^4.1.18",
     "tsx": "^4.15.6",
     "typescript": "^5.4.5"
   }

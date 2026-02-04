@@ -54,9 +54,8 @@ services:
       - DATABASE_URL=postgresql://financeuser:financepass@postgres:5432/personal_finance?schema=public
       - NODE_ENV=development
     volumes:
-      # Mount source code for hot reload
-      - ./services/data-service/src:/app/src
-      - ./services/data-service/prisma:/app/prisma
+      # Mount service code for hot reload
+      - ./services/data-service:/app
       # Exclude node_modules
       - /app/node_modules
     depends_on:

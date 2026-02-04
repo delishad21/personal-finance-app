@@ -105,6 +105,12 @@ export async function POST(request: NextRequest) {
               icon: "category",
               isDefault: true,
             },
+            {
+              name: "Uncategorized",
+              color: "#9ca3af",
+              icon: "label",
+              isDefault: true,
+            },
           ],
         },
       },

@@ -76,10 +76,10 @@ export class DuplicateDetector {
         (candidate.date.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
       );
       if (daysDiff === 0) {
-        score += 0.4;
+        score += 0.3;
         matchReasons.push("Same date");
       } else if (daysDiff <= this.DATE_THRESHOLD_DAYS) {
-        score += 0.2;
+        score += 0.15;
         matchReasons.push(`Date within ${Math.ceil(daysDiff)} days`);
       }
 
@@ -89,7 +89,7 @@ export class DuplicateDetector {
         (amountOut && candidate.amountOut?.equals(amountOut));
 
       if (amountMatch) {
-        score += 0.4;
+        score += 0.3;
         matchReasons.push("Exact amount match");
       }
 
@@ -99,19 +99,25 @@ export class DuplicateDetector {
         candidate.description.toLowerCase(),
       );
 
-      if (similarity >= 0.9) {
+      if (similarity === 1.0) {
+        score += 0.4;
+        matchReasons.push("Exact description match");
+      } else if (similarity >= 0.9) {
         score += 0.3;
         matchReasons.push("Very similar description");
       } else if (similarity >= 0.7) {
         score += 0.2;
         matchReasons.push("Similar description");
+      } else if (similarity >= 0.5) {
+        score += 0.1;
+        matchReasons.push("Somewhat similar description");
       }
 
       // If score is above threshold, add to matches
       if (score >= this.SIMILARITY_THRESHOLD) {
         matches.push({
           transaction: candidate,
-          matchScore: Math.min(score, 1.0), // Cap at 100%
+          matchScore: score, // Don't cap - let it be what it is
           matchReasons,
         });
       }

@@ -46,12 +46,7 @@ export function UploadSection({
 
         <div className="flex-1 bg-white dark:bg-dark-2 rounded-lg border border-stroke dark:border-dark-3 p-6 flex flex-col">
           <div className="flex-1 flex flex-col gap-4">
-            {/* Drag/drop area on top - takes remaining space */}
-            <div className="flex-1 min-h-[160px]">
-              <FileUploadDropzone file={file} onFileSelect={onFileSelect} />
-            </div>
-
-            {/* Parser selection below */}
+            {/* Parser selection on top */}
             <div className="w-full">
               <label className="block text-sm font-medium text-dark dark:text-white mb-2">
                 Select Parser
@@ -63,6 +58,11 @@ export function UploadSection({
                 className="w-full"
                 buttonClassName="w-full min-w-0"
               />
+            </div>
+
+            {/* Drag/drop area below - takes remaining space */}
+            <div className="flex-1 min-h-40">
+              <FileUploadDropzone file={file} onFileSelect={onFileSelect} />
             </div>
 
             <Button

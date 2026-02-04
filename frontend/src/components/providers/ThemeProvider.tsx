@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
-import CssBaseline from "@mui/material/CssBaseline";
 import { useThemeStore } from "@/lib/stores/themeStore";
-import { lightTheme, darkTheme } from "@/styles/theme";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useThemeStore((state) => state.theme);
@@ -19,10 +16,5 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [theme]);
 
-  return (
-    <MuiThemeProvider theme={theme === "light" ? lightTheme : darkTheme}>
-      <CssBaseline />
-      {children}
-    </MuiThemeProvider>
-  );
+  return <>{children}</>;
 }

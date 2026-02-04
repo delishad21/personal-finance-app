@@ -33,7 +33,7 @@ export function Header({
       <div className="flex items-center gap-4">
         <button
           onClick={toggleSidebar}
-          className="rounded-lg border border-stroke px-1.5 py-1 dark:border-stroke-dark dark:bg-[#020D1A] hover:dark:bg-[#FFFFFF1A] lg:hidden"
+          className="rounded-lg border border-stroke px-1.5 py-1 dark:border-stroke-dark dark:bg-dark-bg hover:dark:bg-white-10 lg:hidden"
         >
           <Menu className="size-6" />
           <span className="sr-only">Toggle Sidebar</span>

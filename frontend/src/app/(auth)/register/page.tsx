@@ -55,7 +55,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-gray-1 dark:from-gray-dark dark:to-[#020D1A] p-4">
+    <div className="min-h-screen bg-linear-to-b from-white to-gray-1 dark:from-gray-dark dark:to-dark-bg p-4">
       {/* Theme Toggle - Top Right */}
       <div className="fixed right-4 top-4">
         <ThemeToggle />

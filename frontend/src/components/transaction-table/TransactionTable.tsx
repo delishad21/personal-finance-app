@@ -197,10 +197,10 @@ export function TransactionTable({
                 return (
                   <Fragment key={`transaction-${index}`}>
                     <tr
-                      className={`border-b border-stroke dark:border-dark-3 hover:bg-gray-1 dark:hover:bg-dark-3/50 transition-colors group ${
+                      className={`border-b hover:bg-gray-1 dark:hover:bg-dark-3/50 transition-colors group ${
                         hasDuplicates
-                          ? "bg-orange-50 dark:bg-orange-950/20"
-                          : ""
+                          ? "border-2 border-red dark:border-red-light"
+                          : "border-stroke dark:border-dark-3"
                       }`}
                     >
                       {/* Checkbox column */}
@@ -262,7 +262,7 @@ export function TransactionTable({
                             }
                             placeholder="Add label..."
                             disabled={showDuplicatesOnly}
-                            className="flex-1 h-full px-3 py-3 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex-1 h-full px-3 py-3 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
                           />
                           {!showDuplicatesOnly && (
                             <button
@@ -293,7 +293,7 @@ export function TransactionTable({
                             )
                           }
                           disabled={showDuplicatesOnly}
-                          className="w-full h-full px-3 py-3 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-full h-full px-3 py-3 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
                         />
                       </td>
 
@@ -330,7 +330,7 @@ export function TransactionTable({
                           }}
                           placeholder="-"
                           disabled={showDuplicatesOnly}
-                          className="w-full h-full px-3 py-3 text-sm text-right border-0 bg-transparent text-green font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-full h-full px-3 py-3 text-sm text-right border-0 bg-transparent text-green font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
                         />
                       </td>
 
@@ -352,7 +352,7 @@ export function TransactionTable({
                           }}
                           placeholder="-"
                           disabled={showDuplicatesOnly}
-                          className="w-full h-full px-3 py-3 text-sm text-right border-0 bg-transparent text-red font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-full h-full px-3 py-3 text-sm text-right border-0 bg-transparent text-red font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
                         />
                       </td>
                     </tr>
