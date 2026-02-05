@@ -22,4 +22,15 @@ export const NEXT_COLUMN: Record<string, string | null> = {
 
 export const MIN_COLUMN_WIDTH = 60;
 
+export const MIN_COLUMN_WIDTHS: Record<keyof typeof DEFAULT_COLUMN_WIDTHS, number> = {
+  checkbox: 40,
+  expand: 32,
+  date: 120,
+  label: 160,
+  description: 240,
+  category: 140,
+  amountIn: 110,
+  amountOut: 110,
+};
+
 export type ColumnWidths = typeof DEFAULT_COLUMN_WIDTHS;

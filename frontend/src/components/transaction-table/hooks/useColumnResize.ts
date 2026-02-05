@@ -1,5 +1,10 @@
 import { useState, useRef, useCallback } from "react";
-import { ColumnWidths, NEXT_COLUMN, MIN_COLUMN_WIDTH } from "../config/columns";
+import {
+  ColumnWidths,
+  NEXT_COLUMN,
+  MIN_COLUMN_WIDTH,
+  MIN_COLUMN_WIDTHS,
+} from "../config/columns";
 
 export function useColumnResize(defaultWidths: ColumnWidths) {
   const [columnWidths, setColumnWidths] = useState(defaultWidths);
@@ -38,15 +43,24 @@ export function useColumnResize(defaultWidths: ColumnWidths) {
     let newLeftWidth = startWidthLeft.current + diff;
     let newRightWidth = startWidthRight.current - diff;
 
-    if (newLeftWidth < MIN_COLUMN_WIDTH) {
-      newLeftWidth = MIN_COLUMN_WIDTH;
+    const minLeft =
+      MIN_COLUMN_WIDTHS[
+        resizingColumn.current as keyof typeof MIN_COLUMN_WIDTHS
+      ] ?? MIN_COLUMN_WIDTH;
+    const minRight =
+      MIN_COLUMN_WIDTHS[
+        nextColumn.current as keyof typeof MIN_COLUMN_WIDTHS
+      ] ?? MIN_COLUMN_WIDTH;
+
+    if (newLeftWidth < minLeft) {
+      newLeftWidth = minLeft;
       newRightWidth =
-        startWidthLeft.current + startWidthRight.current - MIN_COLUMN_WIDTH;
+        startWidthLeft.current + startWidthRight.current - minLeft;
     }
-    if (newRightWidth < MIN_COLUMN_WIDTH) {
-      newRightWidth = MIN_COLUMN_WIDTH;
+    if (newRightWidth < minRight) {
+      newRightWidth = minRight;
       newLeftWidth =
-        startWidthLeft.current + startWidthRight.current - MIN_COLUMN_WIDTH;
+        startWidthLeft.current + startWidthRight.current - minRight;
     }
 
     setColumnWidths((prev) => ({

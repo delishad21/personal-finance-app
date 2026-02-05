@@ -4,6 +4,7 @@ import {
   getTransactionYears,
 } from "@/app/actions/transactions";
 import { getCategories } from "@/app/actions/categories";
+import { getAccountNumbers } from "@/app/actions/accountNumbers";
 
 interface Transaction {
   id: string;
@@ -12,6 +13,7 @@ interface Transaction {
   amountIn: number | null;
   amountOut: number | null;
   balance: number | null;
+  accountIdentifier?: string | null;
   category?: {
     id: string;
     name: string;
@@ -41,11 +43,13 @@ async function getInitialTransactions() {
 }
 
 export default async function TransactionsPage() {
-  const [categories, initialData, availableYears] = await Promise.all([
-    getCategories(),
-    getInitialTransactions(),
-    getTransactionYears(),
-  ]);
+  const [categories, accountNumbers, initialData, availableYears] =
+    await Promise.all([
+      getCategories(),
+      getAccountNumbers(),
+      getInitialTransactions(),
+      getTransactionYears(),
+    ]);
 
   return (
     <TransactionsClient
@@ -53,6 +57,7 @@ export default async function TransactionsPage() {
       initialTotal={initialData.total}
       initialTotalPages={initialData.totalPages}
       categories={categories}
+      accountNumbers={accountNumbers}
       availableYears={availableYears}
     />
   );

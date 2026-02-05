@@ -13,7 +13,7 @@ const ImportTransactionSchema = z.object({
   amountIn: z.number().nullish(),
   amountOut: z.number().nullish(),
   balance: z.number().nullish(),
-  accountNumber: z.string().nullish(),
+  accountIdentifier: z.string().nullish(),
   source: z.string().nullish(),
   metadata: z.any().optional(),
 });
@@ -42,11 +42,79 @@ const GetTransactionsSchema = z.object({
   dateTo: z.string().optional(),
   categoryIds: z.string().optional(),
   search: z.string().optional(),
+  accountIdentifier: z.string().optional(),
   minAmount: z.number().optional(),
   maxAmount: z.number().optional(),
   limit: z.number().optional(),
   offset: z.number().optional(),
 });
+
+const parseFilters = (input: any) => {
+  if (!input) return {};
+
+  const rawCategoryIds = input.categoryIds;
+  const categoryIds = Array.isArray(rawCategoryIds)
+    ? rawCategoryIds
+    : typeof rawCategoryIds === "string"
+      ? rawCategoryIds
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : undefined;
+
+  return {
+    dateFrom: input.dateFrom ? new Date(input.dateFrom) : undefined,
+    dateTo: input.dateTo ? new Date(input.dateTo) : undefined,
+    categoryIds: categoryIds && categoryIds.length > 0 ? categoryIds : undefined,
+    search: input.search ? String(input.search) : undefined,
+    transactionType: input.transactionType as
+      | "income"
+      | "expense"
+      | undefined,
+    accountIdentifier: input.accountIdentifier
+      ? String(input.accountIdentifier).trim()
+      : input.accountNumber
+        ? String(input.accountNumber).trim()
+        : undefined,
+    minAmount:
+      input.minAmount !== undefined && input.minAmount !== ""
+        ? Number(input.minAmount)
+        : undefined,
+    maxAmount:
+      input.maxAmount !== undefined && input.maxAmount !== ""
+        ? Number(input.maxAmount)
+        : undefined,
+    dateOrder: input.dateOrder as "asc" | "desc" | undefined,
+  };
+};
+
+const parseUpdates = (updates: any) => {
+  if (!updates || typeof updates !== "object") return {};
+  const next: Record<string, any> = { ...updates };
+  if (next.date && String(next.date).length > 0) {
+    next.date = new Date(next.date);
+  } else {
+    delete next.date;
+  }
+  return next;
+};
+
+const escapeCsv = (value: string) => {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+};
+
+const toCsv = (rows: Array<Record<string, string>>) => {
+  if (rows.length === 0) return "";
+  const headers = Object.keys(rows[0]);
+  const headerLine = headers.map(escapeCsv).join(",");
+  const dataLines = rows.map((row) =>
+    headers.map((key) => escapeCsv(row[key] ?? "")).join(","),
+  );
+  return [headerLine, ...dataLines].join("\n");
+};
 
 /**
  * POST /api/transactions/check-import
@@ -113,6 +181,11 @@ transactionRouter.get("/", async (req: Request, res: Response) => {
             .map((id) => id.trim())
             .filter(Boolean)
         : undefined,
+      accountIdentifier: req.query.accountIdentifier
+        ? String(req.query.accountIdentifier).trim()
+        : req.query.accountNumber
+          ? String(req.query.accountNumber).trim()
+          : undefined,
       search: req.query.search as string | undefined,
       transactionType: req.query.transactionType as
         | "income"
@@ -155,6 +228,181 @@ transactionRouter.get("/years", async (req: Request, res: Response) => {
 
     const years = await TransactionService.getTransactionYears(userId);
     res.json({ years });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/transactions/bulk-delete
+ * Delete multiple transactions
+ */
+transactionRouter.post("/bulk-delete", async (req: Request, res: Response) => {
+  try {
+    const { userId, ids } = req.body;
+
+    if (!userId || !ids || !Array.isArray(ids)) {
+      return res
+        .status(400)
+        .json({ error: "userId and ids array are required" });
+    }
+
+    await TransactionService.deleteTransactions(ids, userId);
+
+    res.json({ success: true, deletedCount: ids.length });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/transactions/bulk
+ * Update multiple transactions by IDs
+ */
+transactionRouter.patch("/bulk", async (req: Request, res: Response) => {
+  try {
+    const { userId, ids, updates } = req.body;
+
+    if (!userId || !ids || !Array.isArray(ids)) {
+      return res
+        .status(400)
+        .json({ error: "userId and ids array are required" });
+    }
+
+    const result = await TransactionService.bulkUpdateByIds(
+      userId,
+      ids,
+      parseUpdates(updates),
+    );
+
+    res.json({ success: true, updatedCount: result.count });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/transactions/bulk-by-filter
+ * Update multiple transactions by filters
+ */
+transactionRouter.patch(
+  "/bulk-by-filter",
+  async (req: Request, res: Response) => {
+    try {
+      const { userId, filters, excludeIds, updates } = req.body;
+
+      if (!userId || !filters) {
+        return res.status(400).json({ error: "userId and filters required" });
+      }
+
+      const parsedFilters = parseFilters(filters);
+      const result = await TransactionService.bulkUpdateByFilter(
+        userId,
+        parsedFilters,
+        excludeIds,
+        parseUpdates(updates),
+      );
+
+      res.json({ success: true, updatedCount: result.count });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * DELETE /api/transactions/bulk
+ * Delete multiple transactions by IDs
+ */
+transactionRouter.delete("/bulk", async (req: Request, res: Response) => {
+  try {
+    const { userId, ids } = req.body;
+
+    if (!userId || !ids || !Array.isArray(ids)) {
+      return res
+        .status(400)
+        .json({ error: "userId and ids array are required" });
+    }
+
+    const result = await TransactionService.deleteTransactions(ids, userId);
+
+    res.json({ success: true, deletedCount: result.count });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/transactions/bulk-by-filter
+ * Delete multiple transactions by filters
+ */
+transactionRouter.delete(
+  "/bulk-by-filter",
+  async (req: Request, res: Response) => {
+    try {
+      const { userId, filters, excludeIds } = req.body;
+
+      if (!userId || !filters) {
+        return res.status(400).json({ error: "userId and filters required" });
+      }
+
+      const parsedFilters = parseFilters(filters);
+      const result = await TransactionService.bulkDeleteByFilter(
+        userId,
+        parsedFilters,
+        excludeIds,
+      );
+
+      res.json({ success: true, deletedCount: result.count });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * POST /api/transactions/export
+ * Export transactions as CSV
+ */
+transactionRouter.post("/export", async (req: Request, res: Response) => {
+  try {
+    const { userId, ids, filters, excludeIds } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const transactions =
+      ids && Array.isArray(ids) && ids.length > 0
+        ? await TransactionService.exportByIds(userId, ids)
+        : await TransactionService.exportByFilter(
+            userId,
+            parseFilters(filters),
+            excludeIds,
+          );
+
+    const rows = transactions.map((transaction) => ({
+      date: transaction.date.toISOString().slice(0, 10),
+      label: transaction.label ?? "",
+      description: transaction.description ?? "",
+      amountIn:
+        transaction.amountIn !== null ? String(transaction.amountIn) : "",
+      amountOut:
+        transaction.amountOut !== null ? String(transaction.amountOut) : "",
+      balance: transaction.balance !== null ? String(transaction.balance) : "",
+      categoryName: transaction.category?.name ?? "",
+      categoryColor: transaction.category?.color ?? "",
+      accountIdentifier: transaction.accountIdentifier ?? "",
+      source: transaction.source ?? "",
+    }));
+
+    const csv = toCsv(rows);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=transactions.csv",
+    );
+    res.send(csv);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
@@ -226,28 +474,6 @@ transactionRouter.delete("/:id", async (req: Request, res: Response) => {
     await TransactionService.deleteTransaction(id, userId);
 
     res.json({ success: true });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-/**
- * POST /api/transactions/bulk-delete
- * Delete multiple transactions
- */
-transactionRouter.post("/bulk-delete", async (req: Request, res: Response) => {
-  try {
-    const { userId, ids } = req.body;
-
-    if (!userId || !ids || !Array.isArray(ids)) {
-      return res
-        .status(400)
-        .json({ error: "userId and ids array are required" });
-    }
-
-    await TransactionService.deleteTransactions(ids, userId);
-
-    res.json({ success: true, deletedCount: ids.length });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

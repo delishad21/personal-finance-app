@@ -91,9 +91,16 @@ export function DatePicker({
 
   const handleSelectDate = (day: number) => {
     const newDate = new Date(viewYear, viewMonth, day);
-    const isoDate = newDate.toISOString().split("T")[0];
+    const isoDate = formatDateLocal(newDate);
     onChange(isoDate);
     setIsOpen(false);
+  };
+
+  const formatDateLocal = (date: Date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
   };
 
   const formatDisplayDate = (dateStr: string) => {
@@ -210,7 +217,7 @@ export function DatePicker({
             <button
               type="button"
               onClick={() => {
-                const today = new Date().toISOString().split("T")[0];
+                const today = formatDateLocal(new Date());
                 onChange(today);
                 setIsOpen(false);
               }}

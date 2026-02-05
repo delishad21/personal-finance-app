@@ -144,6 +144,7 @@ export class TransactionService {
       dateOrder?: "asc" | "desc";
       minAmount?: number;
       maxAmount?: number;
+      accountIdentifier?: string;
       limit?: number;
       offset?: number;
     },
@@ -185,5 +186,79 @@ export class TransactionService {
    */
   static async deleteTransactions(ids: string[], userId: string) {
     return TransactionRepository.deleteMany(ids, userId);
+  }
+
+  static async bulkUpdateByIds(
+    userId: string,
+    ids: string[],
+    updates: Partial<ImportTransactionInput>,
+  ) {
+    return TransactionRepository.updateManyByIds(userId, ids, updates);
+  }
+
+  static async bulkUpdateByFilter(
+    userId: string,
+    filters: {
+      dateFrom?: Date;
+      dateTo?: Date;
+      categoryIds?: string[];
+      search?: string;
+      transactionType?: "income" | "expense";
+      minAmount?: number;
+      maxAmount?: number;
+      accountIdentifier?: string;
+    },
+    excludeIds: string[] | undefined,
+    updates: Partial<ImportTransactionInput>,
+  ) {
+    return TransactionRepository.updateManyByFilter(
+      userId,
+      filters,
+      excludeIds,
+      updates,
+    );
+  }
+
+  static async bulkDeleteByFilter(
+    userId: string,
+    filters: {
+      dateFrom?: Date;
+      dateTo?: Date;
+      categoryIds?: string[];
+      search?: string;
+      transactionType?: "income" | "expense";
+      minAmount?: number;
+      maxAmount?: number;
+      accountIdentifier?: string;
+    },
+    excludeIds?: string[],
+  ) {
+    return TransactionRepository.deleteManyByFilter(
+      userId,
+      filters,
+      excludeIds,
+    );
+  }
+
+  static async exportByIds(userId: string, ids: string[]) {
+    return TransactionRepository.findManyByIds(userId, ids);
+  }
+
+  static async exportByFilter(
+    userId: string,
+    filters: {
+      dateFrom?: Date;
+      dateTo?: Date;
+      categoryIds?: string[];
+      search?: string;
+      transactionType?: "income" | "expense";
+      minAmount?: number;
+      maxAmount?: number;
+      dateOrder?: "asc" | "desc";
+      accountIdentifier?: string;
+    },
+    excludeIds?: string[],
+  ) {
+    return TransactionRepository.findManyByFilter(userId, filters, excludeIds);
   }
 }

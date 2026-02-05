@@ -2,6 +2,90 @@ import prisma from "../../lib/prisma";
 import { ImportTransactionInput } from "../duplicates/duplicate-detector";
 
 export class TransactionRepository {
+  private static buildWhere(
+    userId: string,
+    filters?: {
+      dateFrom?: Date;
+      dateTo?: Date;
+      categoryIds?: string[];
+      search?: string;
+      transactionType?: "income" | "expense";
+      minAmount?: number;
+      maxAmount?: number;
+      accountIdentifier?: string;
+    },
+    excludeIds?: string[],
+    ids?: string[],
+  ) {
+    const where: any = { userId };
+
+    if (ids && ids.length > 0) {
+      where.id = { in: ids };
+    }
+
+    if (filters?.dateFrom || filters?.dateTo) {
+      where.date = {};
+      if (filters.dateFrom) where.date.gte = filters.dateFrom;
+      if (filters.dateTo) where.date.lte = filters.dateTo;
+    }
+
+    if (filters?.categoryIds && filters.categoryIds.length > 0) {
+      where.categoryId = { in: filters.categoryIds };
+    }
+
+    if (filters?.accountIdentifier) {
+      where.accountIdentifier = filters.accountIdentifier;
+    }
+
+    if (filters?.search) {
+      where.OR = [
+        { description: { contains: filters.search, mode: "insensitive" } },
+        { label: { contains: filters.search, mode: "insensitive" } },
+      ];
+    }
+
+    if (filters?.transactionType) {
+      if (filters.transactionType === "income") {
+        where.amountIn = { not: null };
+      } else if (filters.transactionType === "expense") {
+        where.amountOut = { not: null };
+      }
+    }
+
+    if (filters?.minAmount !== undefined || filters?.maxAmount !== undefined) {
+      where.OR = where.OR || [];
+      if (filters.minAmount !== undefined && filters.maxAmount !== undefined) {
+        where.OR.push(
+          {
+            AND: [
+              { amountIn: { gte: filters.minAmount, lte: filters.maxAmount } },
+            ],
+          },
+          {
+            AND: [
+              { amountOut: { gte: filters.minAmount, lte: filters.maxAmount } },
+            ],
+          },
+        );
+      } else if (filters.minAmount !== undefined) {
+        where.OR.push(
+          { amountIn: { gte: filters.minAmount } },
+          { amountOut: { gte: filters.minAmount } },
+        );
+      } else if (filters.maxAmount !== undefined) {
+        where.OR.push(
+          { amountIn: { lte: filters.maxAmount } },
+          { amountOut: { lte: filters.maxAmount } },
+        );
+      }
+    }
+
+    if (excludeIds && excludeIds.length > 0) {
+      where.NOT = { id: { in: excludeIds } };
+    }
+
+    return where;
+  }
   /**
    * Create multiple transactions in a single batch
    */
@@ -20,7 +104,7 @@ export class TransactionRepository {
         amountIn: t.amountIn,
         amountOut: t.amountOut,
         balance: t.balance,
-        accountNumber: t.accountNumber,
+        accountIdentifier: t.accountIdentifier,
         source: t.source,
         metadata: t.metadata,
         importBatchId,
@@ -46,80 +130,7 @@ export class TransactionRepository {
       offset?: number;
     },
   ) {
-    const where: any = { userId };
-
-    if (filters?.dateFrom || filters?.dateTo) {
-      where.date = {};
-      if (filters.dateFrom) where.date.gte = filters.dateFrom;
-      if (filters.dateTo) where.date.lte = filters.dateTo;
-    }
-
-    if (filters?.categoryIds && filters.categoryIds.length > 0) {
-      where.categoryId = { in: filters.categoryIds };
-    }
-
-    if (filters?.search) {
-      where.OR = [
-        { description: { contains: filters.search, mode: "insensitive" } },
-        { label: { contains: filters.search, mode: "insensitive" } },
-      ];
-    }
-
-    if (filters?.transactionType) {
-      if (filters.transactionType === "income") {
-        where.amountIn = { not: null };
-      } else if (filters.transactionType === "expense") {
-        where.amountOut = { not: null };
-      }
-    }
-
-    // Handle amount filtering - check both amountIn and amountOut
-    if (filters?.minAmount !== undefined || filters?.maxAmount !== undefined) {
-      const amountConditions: any[] = [];
-
-      if (filters.minAmount !== undefined) {
-        amountConditions.push(
-          { amountIn: { gte: filters.minAmount } },
-          { amountOut: { gte: filters.minAmount } },
-        );
-      }
-
-      if (filters.maxAmount !== undefined) {
-        amountConditions.push(
-          { amountIn: { lte: filters.maxAmount } },
-          { amountOut: { lte: filters.maxAmount } },
-        );
-      }
-
-      where.OR = where.OR || [];
-      if (filters.minAmount !== undefined && filters.maxAmount !== undefined) {
-        // Both min and max: amount must be in range
-        where.OR.push(
-          {
-            AND: [
-              { amountIn: { gte: filters.minAmount, lte: filters.maxAmount } },
-            ],
-          },
-          {
-            AND: [
-              { amountOut: { gte: filters.minAmount, lte: filters.maxAmount } },
-            ],
-          },
-        );
-      } else if (filters.minAmount !== undefined) {
-        // Only min
-        where.OR.push(
-          { amountIn: { gte: filters.minAmount } },
-          { amountOut: { gte: filters.minAmount } },
-        );
-      } else if (filters.maxAmount !== undefined) {
-        // Only max
-        where.OR.push(
-          { amountIn: { lte: filters.maxAmount } },
-          { amountOut: { lte: filters.maxAmount } },
-        );
-      }
-    }
+    const where = TransactionRepository.buildWhere(userId, filters);
 
     const orderBy =
       filters?.dateOrder === "asc" ? { date: "asc" } : { date: "desc" };
@@ -139,6 +150,110 @@ export class TransactionRepository {
     ]);
 
     return { transactions, total };
+  }
+
+  static async findManyByIds(userId: string, ids: string[]) {
+    const where = TransactionRepository.buildWhere(
+      userId,
+      undefined,
+      undefined,
+      ids,
+    );
+    return prisma.transaction.findMany({
+      where,
+      include: {
+        category: true,
+        importBatch: true,
+      },
+      orderBy: { date: "desc" },
+    });
+  }
+
+  static async findManyByFilter(
+    userId: string,
+    filters?: {
+      dateFrom?: Date;
+      dateTo?: Date;
+      categoryIds?: string[];
+      search?: string;
+      transactionType?: "income" | "expense";
+      minAmount?: number;
+      maxAmount?: number;
+      dateOrder?: "asc" | "desc";
+      accountIdentifier?: string;
+    },
+    excludeIds?: string[],
+  ) {
+    const where = TransactionRepository.buildWhere(userId, filters, excludeIds);
+    const orderBy =
+      filters?.dateOrder === "asc" ? { date: "asc" } : { date: "desc" };
+    return prisma.transaction.findMany({
+      where,
+      include: {
+        category: true,
+        importBatch: true,
+      },
+      orderBy,
+    });
+  }
+
+  static async updateManyByIds(
+    userId: string,
+    ids: string[],
+    updates: Partial<ImportTransactionInput>,
+  ) {
+    const where = TransactionRepository.buildWhere(
+      userId,
+      undefined,
+      undefined,
+      ids,
+    );
+    return prisma.transaction.updateMany({
+      where,
+      data: updates,
+    });
+  }
+
+  static async updateManyByFilter(
+    userId: string,
+    filters: {
+      dateFrom?: Date;
+      dateTo?: Date;
+      categoryIds?: string[];
+      search?: string;
+      transactionType?: "income" | "expense";
+      minAmount?: number;
+      maxAmount?: number;
+      accountIdentifier?: string;
+    },
+    excludeIds: string[] | undefined,
+    updates: Partial<ImportTransactionInput>,
+  ) {
+    const where = TransactionRepository.buildWhere(userId, filters, excludeIds);
+    return prisma.transaction.updateMany({
+      where,
+      data: updates,
+    });
+  }
+
+  static async deleteManyByFilter(
+    userId: string,
+    filters: {
+      dateFrom?: Date;
+      dateTo?: Date;
+      categoryIds?: string[];
+      search?: string;
+      transactionType?: "income" | "expense";
+      minAmount?: number;
+      maxAmount?: number;
+      accountIdentifier?: string;
+    },
+    excludeIds?: string[],
+  ) {
+    const where = TransactionRepository.buildWhere(userId, filters, excludeIds);
+    return prisma.transaction.deleteMany({
+      where,
+    });
   }
 
   static async getYears(userId: string) {

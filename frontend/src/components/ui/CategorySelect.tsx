@@ -34,7 +34,10 @@ export function CategorySelect({
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const selectedCategory = categories.find((c) => c.id === value);
+  const sanitizedCategories = categories.filter(
+    (cat) => cat.name.toLowerCase() !== "uncategorized",
+  );
+  const selectedCategory = sanitizedCategories.find((c) => c.id === value);
 
   const updateDropdownPosition = () => {
     if (!containerRef.current) return;
@@ -167,7 +170,7 @@ export function CategorySelect({
           <div className="h-px bg-stroke dark:bg-dark-3 my-1" />
 
           {/* Category Options */}
-          {categories.map((cat) => (
+          {sanitizedCategories.map((cat) => (
             <button
               key={cat.id}
               type="button"

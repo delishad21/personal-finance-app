@@ -9,6 +9,9 @@ interface PaginationProps {
   itemsPerPage: number;
   onPageChange: (page: number) => void;
   compact?: boolean;
+  leftContent?: React.ReactNode;
+  rightContent?: React.ReactNode;
+  className?: string;
 }
 
 export function Pagination({
@@ -18,6 +21,9 @@ export function Pagination({
   itemsPerPage,
   onPageChange,
   compact = false,
+  leftContent,
+  rightContent,
+  className = "",
 }: PaginationProps) {
   const startItem = (currentPage - 1) * itemsPerPage + 1;
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
@@ -57,27 +63,37 @@ export function Pagination({
     return pages;
   };
 
-  if (totalPages <= 1) return null;
+  if (totalPages <= 1 && !leftContent && !rightContent) return null;
 
   return (
-    <div className={`flex items-center justify-between ${compact ? "px-0 py-0" : "bg-white dark:bg-dark-2 rounded-lg border border-stroke dark:border-dark-3 px-4 py-3"}`}>
-      {/* Info */}
-      <div className="text-sm text-dark-5 dark:text-dark-6">
-        Showing{" "}
-        <span className="font-medium text-dark dark:text-white">
-          {startItem}
-        </span>{" "}
-        to{" "}
-        <span className="font-medium text-dark dark:text-white">{endItem}</span>{" "}
-        of{" "}
-        <span className="font-medium text-dark dark:text-white">
-          {totalItems}
-        </span>{" "}
-        transactions
-      </div>
+    <div
+      className={`flex flex-wrap items-center gap-3 ${
+        compact
+          ? "px-0 py-0"
+          : "bg-white dark:bg-dark-2 rounded-lg border border-stroke dark:border-dark-3 px-4 py-3"
+      } ${className}`}
+    >
+      {leftContent && <div className="flex items-center">{leftContent}</div>}
+
+      {rightContent && <div className="flex items-center">{rightContent}</div>}
 
       {/* Page Numbers */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-3 ml-auto">
+        <div className="text-sm text-dark-5 dark:text-dark-6 text-right">
+          Showing{" "}
+          <span className="font-medium text-dark dark:text-white">
+            {startItem}
+          </span>{" "}
+          to{" "}
+          <span className="font-medium text-dark dark:text-white">
+            {endItem}
+          </span>{" "}
+          of{" "}
+          <span className="font-medium text-dark dark:text-white">
+            {totalItems}
+          </span>{" "}
+          transactions
+        </div>
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}

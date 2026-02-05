@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/Checkbox";
 
 interface Transaction {
   id: string;
@@ -21,14 +22,20 @@ interface Transaction {
 
 interface TransactionCardProps {
   transaction: Transaction;
+  accountColor?: string;
   onEdit?: (transaction: Transaction) => void;
   onDelete?: (id: string) => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 export function TransactionCard({
   transaction,
+  accountColor,
   onEdit,
   onDelete,
+  selected = false,
+  onToggleSelect,
 }: TransactionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -55,30 +62,31 @@ export function TransactionCard({
   return (
     <div
       className={`bg-white dark:bg-dark-2 transition-colors border ${
-        isExpanded ? "border-primary" : "border-transparent"
+        isExpanded || selected ? "border-primary" : "border-transparent"
       }`}
     >
       {/* Main Content */}
       <div
         onClick={() => setIsExpanded((prev) => !prev)}
-        className="p-4 cursor-pointer hover:bg-gray-1 dark:hover:bg-dark-3/50"
+        className="relative p-4 pl-6 cursor-pointer hover:bg-gray-1 dark:hover:bg-dark-3/50"
       >
+        {accountColor && (
+          <span
+            className="absolute left-0 top-0 h-full w-1"
+            style={{ backgroundColor: accountColor }}
+          />
+        )}
         <div className="flex items-start justify-between gap-4">
+          {onToggleSelect && (
+            <div
+              className="pt-1"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Checkbox checked={selected} onChange={onToggleSelect} />
+            </div>
+          )}
           {/* Left: Description */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3">
-              {transaction.category && (
-                <span
-                  className="px-2 py-0.5 rounded-full text-xs font-medium"
-                  style={{
-                    backgroundColor: `${transaction.category.color}20`,
-                    color: transaction.category.color,
-                  }}
-                >
-                  {transaction.category.name}
-                </span>
-              )}
-            </div>
             <div className="font-medium text-dark dark:text-white truncate">
               {transaction.label && transaction.label.trim().length > 0
                 ? transaction.label
@@ -87,6 +95,15 @@ export function TransactionCard({
             <div className="mt-0.5 text-xs text-dark-5 dark:text-dark-6 truncate">
               {transaction.description}
             </div>
+            {transaction.category && (
+              <div className="mt-1 flex items-center gap-2 text-xs text-dark-5 dark:text-dark-6 truncate">
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: transaction.category.color }}
+                />
+                <span>{transaction.category.name}</span>
+              </div>
+            )}
           </div>
 
           {/* Right: Amount & Actions */}
@@ -151,6 +168,52 @@ export function TransactionCard({
       >
         <div className="border-t border-stroke dark:border-dark-3 bg-gray-1 dark:bg-dark-3/50 p-4">
           <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <div className="text-dark-5 dark:text-dark-6">Label</div>
+              <div className="font-medium text-dark dark:text-white mt-0.5">
+                {transaction.label && transaction.label.trim().length > 0
+                  ? transaction.label
+                  : transaction.description}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-dark-5 dark:text-dark-6">Description</div>
+              <div className="font-medium text-dark dark:text-white mt-0.5">
+                {transaction.description}
+              </div>
+            </div>
+
+            {transaction.category && (
+              <div>
+                <div className="text-dark-5 dark:text-dark-6">Category</div>
+                <div className="font-medium text-dark dark:text-white mt-0.5 flex items-center gap-2">
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: transaction.category.color }}
+                  />
+                  <span>{transaction.category.name}</span>
+                </div>
+              </div>
+            )}
+
+            {transaction.accountIdentifier && (
+              <div>
+                <div className="text-dark-5 dark:text-dark-6">
+                  Account Identifier
+                </div>
+                <div className="font-medium text-dark dark:text-white mt-0.5 flex items-center gap-2">
+                  {accountColor && (
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: accountColor }}
+                    />
+                  )}
+                  <span>{transaction.accountIdentifier}</span>
+                </div>
+              </div>
+            )}
+
             {transaction.balance !== null && (
               <div>
                 <div className="text-dark-5 dark:text-dark-6">Balance</div>

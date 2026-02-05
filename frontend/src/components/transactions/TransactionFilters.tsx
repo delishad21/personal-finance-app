@@ -5,6 +5,7 @@ import { Search, Filter, X, ChevronDown } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 import { TextInput } from "@/components/ui/TextInput";
 import { Button } from "@/components/ui/Button";
+import { DatePicker } from "@/components/ui/DatePicker";
 
 interface Category {
   id: string;
@@ -17,6 +18,7 @@ interface FilterValues {
   categoryIds: string[];
   month: string;
   year: string;
+  accountIdentifier: string;
   dateFrom: string;
   dateTo: string;
   amountMin: string;
@@ -27,6 +29,7 @@ interface FilterValues {
 
 interface TransactionFiltersProps {
   categories: Category[];
+  accountNumbers: { accountIdentifier: string; color: string }[];
   availableYears: number[];
   onFilterChange: (filters: FilterValues) => void;
   initialFilters?: Partial<FilterValues>;
@@ -34,6 +37,7 @@ interface TransactionFiltersProps {
 
 export function TransactionFilters({
   categories,
+  accountNumbers,
   availableYears,
   onFilterChange,
   initialFilters = {},
@@ -44,16 +48,22 @@ export function TransactionFilters({
     ? categories
     : [
         ...categories,
-        { id: "__uncategorized__", name: "Uncategorized", color: "var(--color-gray-5)" },
+        {
+          id: "__uncategorized__",
+          name: "Uncategorized",
+          color: "var(--color-gray-5)",
+        },
       ];
   const [showAdvanced, setShowAdvanced] = useState(false);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
+  const advancedRef = useRef<HTMLDivElement>(null);
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [filters, setFilters] = useState<FilterValues>({
     search: initialFilters.search || "",
     categoryIds: initialFilters.categoryIds || [],
     month: initialFilters.month || "",
     year: initialFilters.year || "",
+    accountIdentifier: initialFilters.accountIdentifier || "",
     dateFrom: initialFilters.dateFrom || "",
     dateTo: initialFilters.dateTo || "",
     amountMin: initialFilters.amountMin || "",
@@ -62,7 +72,10 @@ export function TransactionFilters({
     dateOrder: initialFilters.dateOrder || "desc",
   });
 
-  const updateFilter = (key: keyof FilterValues, value: string | string[]) => {
+  const updateFilter = <K extends keyof FilterValues>(
+    key: K,
+    value: FilterValues[K],
+  ) => {
     let nextFilters: FilterValues = { ...filters, [key]: value };
 
     if (key === "month" || key === "year") {
@@ -95,6 +108,7 @@ export function TransactionFilters({
       categoryIds: [],
       month: "",
       year: "",
+      accountIdentifier: "",
       dateFrom: "",
       dateTo: "",
       amountMin: "",
@@ -111,6 +125,7 @@ export function TransactionFilters({
     filters.categoryIds.length > 0 ||
     filters.month ||
     filters.year ||
+    filters.accountIdentifier ||
     filters.dateFrom ||
     filters.dateTo ||
     filters.amountMin ||
@@ -125,6 +140,12 @@ export function TransactionFilters({
         !categoryDropdownRef.current.contains(event.target as Node)
       ) {
         setIsCategoryOpen(false);
+      }
+      if (
+        advancedRef.current &&
+        !advancedRef.current.contains(event.target as Node)
+      ) {
+        setShowAdvanced(false);
       }
     }
 
@@ -277,7 +298,7 @@ export function TransactionFilters({
           />
         </div>
 
-        <div className="ml-auto relative">
+        <div className="ml-auto relative" ref={advancedRef}>
           <Button
             variant="primary"
             size="md"
@@ -295,7 +316,7 @@ export function TransactionFilters({
           </Button>
 
           {showAdvanced && (
-            <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-stroke dark:border-dark-3 bg-white dark:bg-dark-2 shadow-dropdown p-4">
+            <div className="absolute right-0 z-20 mt-2 w-96 rounded-lg border border-stroke dark:border-dark-3 bg-white dark:bg-dark-2 shadow-dropdown p-4">
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -305,7 +326,10 @@ export function TransactionFilters({
                     <Select
                       value={filters.transactionType}
                       onChange={(value) =>
-                        updateFilter("transactionType", value)
+                        updateFilter(
+                          "transactionType",
+                          value as FilterValues["transactionType"],
+                        )
                       }
                       options={[
                         { value: "all", label: "All Transactions" },
@@ -322,7 +346,12 @@ export function TransactionFilters({
                     </label>
                     <Select
                       value={filters.dateOrder}
-                      onChange={(value) => updateFilter("dateOrder", value)}
+                      onChange={(value) =>
+                        updateFilter(
+                          "dateOrder",
+                          value as FilterValues["dateOrder"],
+                        )
+                      }
                       options={[
                         { value: "desc", label: "Newest First" },
                         { value: "asc", label: "Oldest First" },
@@ -333,30 +362,51 @@ export function TransactionFilters({
                   </div>
                 </div>
 
+                <div>
+                  <label className="text-xs font-medium text-dark-5 dark:text-dark-6">
+                    Account Identifier
+                  </label>
+                  <Select
+                    value={filters.accountIdentifier}
+                    onChange={(value) =>
+                      updateFilter("accountIdentifier", value)
+                    }
+                    options={[
+                      { value: "", label: "All Identifiers" },
+                      ...accountNumbers.map((account) => ({
+                        value: account.accountIdentifier,
+                        label: account.accountIdentifier,
+                      })),
+                    ]}
+                    className="mt-1 w-full"
+                    buttonClassName="w-full"
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs font-medium text-dark-5 dark:text-dark-6">
                       From Date
                     </label>
-                    <TextInput
-                      type="date"
-                      value={filters.dateFrom}
-                      onChange={(e) => updateFilter("dateFrom", e.target.value)}
-                      className="w-full mt-1"
-                      inputClassName="w-full bg-white dark:bg-dark-3"
-                    />
+                    <div className="mt-1 w-full h-11 rounded-lg border border-stroke dark:border-dark-3 bg-white dark:bg-dark-3">
+                      <DatePicker
+                        value={filters.dateFrom}
+                        onChange={(value) => updateFilter("dateFrom", value)}
+                        className="h-full"
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-dark-5 dark:text-dark-6">
                       To Date
                     </label>
-                    <TextInput
-                      type="date"
-                      value={filters.dateTo}
-                      onChange={(e) => updateFilter("dateTo", e.target.value)}
-                      className="w-full mt-1"
-                      inputClassName="w-full bg-white dark:bg-dark-3"
-                    />
+                    <div className="mt-1 w-full h-11 rounded-lg border border-stroke dark:border-dark-3 bg-white dark:bg-dark-3">
+                      <DatePicker
+                        value={filters.dateTo}
+                        onChange={(value) => updateFilter("dateTo", value)}
+                        className="h-full"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -395,19 +445,19 @@ export function TransactionFilters({
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-stroke dark:border-dark-3">
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    onClick={clearFilters}
-                    leftIcon={<X className="w-4 h-4" />}
-                    className={`w-full ${
-                      !hasActiveFilters ? "invisible pointer-events-none" : ""
-                    }`}
-                  >
-                    Clear Filters
-                  </Button>
-                </div>
+                {hasActiveFilters && (
+                  <div className="pt-3">
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      onClick={clearFilters}
+                      leftIcon={<X className="w-4 h-4" />}
+                      className="w-full"
+                    >
+                      Clear Filters
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}

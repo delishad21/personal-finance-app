@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { parseFile } from "@/app/actions/parser";
 import { createCategory } from "@/app/actions/categories";
+import { upsertAccountNumber } from "@/app/actions/accountNumbers";
 import {
   checkImportDuplicates,
   commitImport,
@@ -23,12 +24,19 @@ interface Transaction {
   amountIn?: number;
   amountOut?: number;
   balance?: number;
+  accountIdentifier?: string;
   metadata: Record<string, any>;
 }
 
 interface Category {
   id: string;
   name: string;
+  color: string;
+}
+
+interface AccountIdentifier {
+  id: string;
+  accountIdentifier: string;
   color: string;
 }
 
@@ -48,11 +56,13 @@ interface ParserOption {
 
 interface ImportClientProps {
   initialCategories: Category[];
+  initialAccountNumbers: AccountIdentifier[];
   parserOptions: ParserOption[];
 }
 
 export function ImportClient({
   initialCategories,
+  initialAccountNumbers,
   parserOptions,
 }: ImportClientProps) {
   // Stage management
@@ -66,7 +76,11 @@ export function ImportClient({
   const [editedTransactions, setEditedTransactions] = useState<Transaction[]>(
     [],
   );
-  const [accountNumber, setAccountNumber] = useState<string>("");
+  const [accountIdentifier, setAccountIdentifier] = useState<string>("");
+  const [accountIdentifiers, setAccountIdentifiers] = useState<AccountIdentifier[]>(
+    initialAccountNumbers,
+  );
+  const [accountColor, setAccountColor] = useState<string>("#6366f1");
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [isUploading, setIsUploading] = useState(false);
@@ -138,15 +152,24 @@ export function ImportClient({
 
       const initialTransactions = result.transactions.map((t) => ({
         ...t,
-        label: t.label && t.label.trim().length > 0 ? t.label : t.description,
+        label: t.label && t.label.trim().length > 0 ? t.label : undefined,
       }));
       setEditedTransactions(initialTransactions);
 
       // Select all transactions by default
       setSelectedIndices(new Set(initialTransactions.map((_, index) => index)));
 
-      if (result.transactions[0]?.metadata?.accountNumber) {
-        setAccountNumber(result.transactions[0].metadata.accountNumber);
+      const detectedAccount =
+        result.transactions[0]?.metadata?.accountIdentifier ||
+        result.transactions[0]?.metadata?.accountNumber;
+      if (detectedAccount) {
+        setAccountIdentifier(detectedAccount);
+        const existing = accountIdentifiers.find(
+          (acc) => acc.accountIdentifier === detectedAccount,
+        );
+        if (existing) {
+          setAccountColor(existing.color);
+        }
       }
 
       // Move to review stage
@@ -185,6 +208,16 @@ export function ImportClient({
     }
   };
 
+  const handleAccountIdentifierChange = (value: string) => {
+    setAccountIdentifier(value);
+    const existing = accountIdentifiers.find(
+      (acc) => acc.accountIdentifier === value,
+    );
+    if (existing) {
+      setAccountColor(existing.color);
+    }
+  };
+
   const handleImportTransactions = async () => {
     if (!parsedData || selectedIndices.size === 0) return;
 
@@ -192,6 +225,20 @@ export function ImportClient({
     setError(null);
 
     try {
+      if (accountIdentifier.trim().length > 0) {
+        const saved = await upsertAccountNumber(
+          accountIdentifier.trim(),
+          accountColor,
+        );
+        setAccountIdentifiers((prev) => {
+          const exists = prev.find((acc) => acc.id === saved.id);
+          if (exists) {
+            return prev.map((acc) => (acc.id === saved.id ? saved : acc));
+          }
+          return [...prev, saved];
+        });
+      }
+
       // Get only the selected transactions
       const selectedTransactions = Array.from(selectedIndices)
         .sort((a, b) => a - b)
@@ -254,6 +301,10 @@ export function ImportClient({
         editedTransactions.map((t) => ({
           ...t,
           date: new Date(t.date),
+          accountIdentifier:
+            accountIdentifier.trim().length > 0
+              ? accountIdentifier.trim()
+              : undefined,
         })),
         Array.from(indices),
         {
@@ -360,7 +411,8 @@ export function ImportClient({
           parsedData={parsedData}
           transactions={editedTransactions}
           categories={categories}
-          accountNumber={accountNumber}
+          accountIdentifier={accountIdentifier}
+          accountColor={accountColor}
           duplicates={stage === "duplicates" ? duplicates : undefined}
           selectedIndices={selectedIndices}
           nonDuplicateIndices={nonDuplicateIndices}
@@ -368,7 +420,8 @@ export function ImportClient({
           isImporting={isImporting}
           showDuplicatesOnly={stage === "duplicates"}
           onUpdateTransaction={handleUpdateTransaction}
-          onAccountNumberChange={setAccountNumber}
+          onAccountIdentifierChange={handleAccountIdentifierChange}
+          onAccountColorChange={setAccountColor}
           onImport={handleImportTransactions}
           onConfirmImport={handleConfirmImport}
           onSelectAll={handleSelectAll}

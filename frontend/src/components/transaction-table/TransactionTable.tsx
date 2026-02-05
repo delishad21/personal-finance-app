@@ -16,14 +16,15 @@ import { DuplicateWarningBanner } from "./DuplicateWarningBanner";
 import { TransactionRowExpanded } from "./TransactionRowExpanded";
 import { DuplicateMatchList } from "./DuplicateMatchList";
 import { useColumnResize } from "./hooks/useColumnResize";
-import { DEFAULT_COLUMN_WIDTHS } from "./config/columns";
+import { DEFAULT_COLUMN_WIDTHS, MIN_COLUMN_WIDTHS } from "./config/columns";
 import type { TransactionTableProps } from "./types";
 
 export function TransactionTable({
   parsedData,
   transactions,
   categories,
-  accountNumber,
+  accountIdentifier,
+  accountColor,
   duplicates,
   selectedIndices,
   nonDuplicateIndices = new Set(),
@@ -31,7 +32,8 @@ export function TransactionTable({
   isImporting,
   showDuplicatesOnly = false,
   onUpdateTransaction,
-  onAccountNumberChange,
+  onAccountIdentifierChange,
+  onAccountColorChange,
   onImport,
   onConfirmImport,
   onSelectAll,
@@ -69,7 +71,8 @@ export function TransactionTable({
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <TransactionTableToolbar
         parsedData={parsedData}
-        accountNumber={accountNumber}
+        accountIdentifier={accountIdentifier}
+        accountColor={accountColor}
         selectedCount={selectedIndices?.size || 0}
         totalCount={transactions.length}
         duplicateCount={duplicates?.size || 0}
@@ -79,7 +82,8 @@ export function TransactionTable({
         onBack={onBack}
         onImport={onImport}
         onConfirmImport={onConfirmImport}
-        onAccountNumberChange={onAccountNumberChange}
+        onAccountIdentifierChange={onAccountIdentifierChange}
+        onAccountColorChange={onAccountColorChange}
       />
 
       {showDuplicatesOnly && duplicates && duplicates.size > 0 && (
@@ -129,6 +133,7 @@ export function TransactionTable({
               <ResizableHeader
                 columnKey="date"
                 columnWidth={columnWidths.date}
+                minWidth={MIN_COLUMN_WIDTHS.date}
                 onResizeStart={handleResizeStart}
               >
                 Date
@@ -136,6 +141,7 @@ export function TransactionTable({
               <ResizableHeader
                 columnKey="label"
                 columnWidth={columnWidths.label}
+                minWidth={MIN_COLUMN_WIDTHS.label}
                 onResizeStart={handleResizeStart}
               >
                 <div className="flex items-center gap-2">
@@ -154,6 +160,7 @@ export function TransactionTable({
               <ResizableHeader
                 columnKey="description"
                 columnWidth={columnWidths.description}
+                minWidth={MIN_COLUMN_WIDTHS.description}
                 onResizeStart={handleResizeStart}
               >
                 Description
@@ -161,6 +168,7 @@ export function TransactionTable({
               <ResizableHeader
                 columnKey="category"
                 columnWidth={columnWidths.category}
+                minWidth={MIN_COLUMN_WIDTHS.category}
                 onResizeStart={handleResizeStart}
               >
                 Category
@@ -168,7 +176,7 @@ export function TransactionTable({
               <ResizableHeader
                 columnKey="amountIn"
                 columnWidth={columnWidths.amountIn}
-                align="right"
+                minWidth={MIN_COLUMN_WIDTHS.amountIn}
                 onResizeStart={handleResizeStart}
               >
                 In
@@ -176,7 +184,7 @@ export function TransactionTable({
               <ResizableHeader
                 columnKey="amountOut"
                 columnWidth={columnWidths.amountOut}
-                align="right"
+                minWidth={MIN_COLUMN_WIDTHS.amountOut}
                 resizable={false}
               >
                 Out
@@ -330,7 +338,7 @@ export function TransactionTable({
                           }}
                           placeholder="-"
                           disabled={showDuplicatesOnly}
-                          className="w-full h-full px-3 py-3 text-sm text-right border-0 bg-transparent text-green font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
+                          className="w-full h-full px-3 py-3 text-sm border-0 bg-transparent text-green font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
                         />
                       </td>
 
@@ -352,7 +360,7 @@ export function TransactionTable({
                           }}
                           placeholder="-"
                           disabled={showDuplicatesOnly}
-                          className="w-full h-full px-3 py-3 text-sm text-right border-0 bg-transparent text-red font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
+                          className="w-full h-full px-3 py-3 text-sm border-0 bg-transparent text-red font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
                         />
                       </td>
                     </tr>

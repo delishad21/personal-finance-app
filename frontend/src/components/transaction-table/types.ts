@@ -6,6 +6,7 @@ export interface Transaction {
   amountIn?: number;
   amountOut?: number;
   balance?: number;
+  accountIdentifier?: string;
   metadata: Record<string, any>;
 }
 
@@ -43,7 +44,8 @@ export interface TransactionTableProps {
   parsedData: ParseResult;
   transactions: Transaction[];
   categories: Category[];
-  accountNumber: string;
+  accountIdentifier: string;
+  accountColor?: string;
   duplicates?: Map<number, DuplicateMatch[]>;
   selectedIndices?: Set<number>;
   nonDuplicateIndices?: Set<number>;
@@ -51,7 +53,8 @@ export interface TransactionTableProps {
   isImporting?: boolean;
   showDuplicatesOnly?: boolean;
   onUpdateTransaction: (index: number, field: string, value: any) => void;
-  onAccountNumberChange: (value: string) => void;
+  onAccountIdentifierChange: (value: string) => void;
+  onAccountColorChange?: (color: string) => void;
   onImport: () => void;
   onConfirmImport?: () => void;
   onSelectAll?: () => void;

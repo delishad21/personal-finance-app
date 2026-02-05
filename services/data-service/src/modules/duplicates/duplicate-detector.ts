@@ -14,7 +14,7 @@ export interface ImportTransactionInput {
   amountIn?: number | null;
   amountOut?: number | null;
   balance?: number | null;
-  accountNumber?: string | null;
+  accountIdentifier?: string | null;
   source?: string | null;
   metadata?: any;
 }

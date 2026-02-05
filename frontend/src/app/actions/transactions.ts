@@ -13,7 +13,7 @@ export interface ImportTransaction {
   amountIn?: number;
   amountOut?: number;
   balance?: number;
-  accountNumber?: string;
+  accountIdentifier?: string;
   source?: string;
   metadata?: any;
 }
@@ -135,6 +135,7 @@ export async function getTransactions(filters?: {
   maxAmount?: number;
   transactionType?: "income" | "expense";
   dateOrder?: "asc" | "desc";
+  accountIdentifier?: string;
   limit?: number;
   offset?: number;
 }) {
@@ -159,6 +160,9 @@ export async function getTransactions(filters?: {
     }),
     ...(filters?.transactionType && { transactionType: filters.transactionType }),
     ...(filters?.dateOrder && { dateOrder: filters.dateOrder }),
+    ...(filters?.accountIdentifier && {
+      accountIdentifier: filters.accountIdentifier,
+    }),
     ...(filters?.limit && { limit: filters.limit.toString() }),
     ...(filters?.offset && { offset: filters.offset.toString() }),
   });
@@ -246,4 +250,184 @@ export async function updateTransaction(
   }
 
   return response.json();
+}
+
+export interface TransactionFilterPayload {
+  dateFrom?: Date;
+  dateTo?: Date;
+  categoryIds?: string[];
+  search?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  transactionType?: "income" | "expense";
+  dateOrder?: "asc" | "desc";
+  accountIdentifier?: string;
+}
+
+export async function bulkUpdateTransactionsByIds(
+  ids: string[],
+  updates: Partial<ImportTransaction>,
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized");
+  }
+
+  const response = await fetch(`${DATA_SERVICE_URL}/api/transactions/bulk`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      userId: session.user.id,
+      ids,
+      updates,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to update transactions");
+  }
+
+  return response.json();
+}
+
+export async function bulkUpdateTransactionsByFilter(
+  filters: TransactionFilterPayload,
+  excludeIds: string[] | undefined,
+  updates: Partial<ImportTransaction>,
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized");
+  }
+
+  const response = await fetch(
+    `${DATA_SERVICE_URL}/api/transactions/bulk-by-filter`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: session.user.id,
+        filters: {
+          ...filters,
+          dateFrom: filters.dateFrom?.toISOString(),
+          dateTo: filters.dateTo?.toISOString(),
+        },
+        excludeIds,
+        updates,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to update transactions");
+  }
+
+  return response.json();
+}
+
+export async function bulkDeleteTransactionsByIds(ids: string[]) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized");
+  }
+
+  const response = await fetch(`${DATA_SERVICE_URL}/api/transactions/bulk`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      userId: session.user.id,
+      ids,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to delete transactions");
+  }
+
+  return response.json();
+}
+
+export async function bulkDeleteTransactionsByFilter(
+  filters: TransactionFilterPayload,
+  excludeIds: string[] | undefined,
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized");
+  }
+
+  const response = await fetch(
+    `${DATA_SERVICE_URL}/api/transactions/bulk-by-filter`,
+    {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: session.user.id,
+        filters: {
+          ...filters,
+          dateFrom: filters.dateFrom?.toISOString(),
+          dateTo: filters.dateTo?.toISOString(),
+        },
+        excludeIds,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to delete transactions");
+  }
+
+  return response.json();
+}
+
+export async function exportTransactionsCsv(
+  params:
+    | { ids: string[]; filters?: undefined; excludeIds?: undefined }
+    | { ids?: undefined; filters: TransactionFilterPayload; excludeIds?: string[] },
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized");
+  }
+
+  const response = await fetch(
+    `${DATA_SERVICE_URL}/api/transactions/export`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: session.user.id,
+        ids: params.ids,
+        filters: params.filters
+          ? {
+              ...params.filters,
+              dateFrom: params.filters.dateFrom?.toISOString(),
+              dateTo: params.filters.dateTo?.toISOString(),
+            }
+          : undefined,
+        excludeIds: params.excludeIds,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to export transactions");
+  }
+
+  return response.text();
 }

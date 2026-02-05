@@ -60,7 +60,7 @@ interface TransactionTableProps {
   parsedData: ParseResult;
   transactions: Transaction[];
   categories: Category[];
-  accountNumber: string;
+  accountIdentifier: string;
   duplicates?: Map<number, DuplicateMatch[]>;
   selectedIndices?: Set<number>;
   nonDuplicateIndices?: Set<number>;
@@ -68,7 +68,7 @@ interface TransactionTableProps {
   isImporting?: boolean;
   showDuplicatesOnly?: boolean;
   onUpdateTransaction: (index: number, field: string, value: any) => void;
-  onAccountNumberChange: (value: string) => void;
+  onAccountIdentifierChange: (value: string) => void;
   onImport: () => void;
   onConfirmImport?: () => void;
   onSelectAll?: () => void;
@@ -106,7 +106,7 @@ export function TransactionTable({
   parsedData,
   transactions,
   categories,
-  accountNumber,
+  accountIdentifier,
   duplicates,
   selectedIndices,
   nonDuplicateIndices = new Set(),
@@ -114,7 +114,7 @@ export function TransactionTable({
   isImporting,
   showDuplicatesOnly = false,
   onUpdateTransaction,
-  onAccountNumberChange,
+  onAccountIdentifierChange,
   onImport,
   onConfirmImport,
   onSelectAll,
@@ -232,13 +232,13 @@ export function TransactionTable({
 
           <div className="flex items-center gap-4">
             {!showDuplicatesOnly && (
-              <TextInput
-                label="Account Number:"
-                size="sm"
-                value={accountNumber}
-                onChange={(e) => onAccountNumberChange(e.target.value)}
-                placeholder="Enter account number"
-              />
+            <TextInput
+              label="Account Identifier:"
+              size="sm"
+              value={accountIdentifier}
+              onChange={(e) => onAccountIdentifierChange(e.target.value)}
+              placeholder="Enter account identifier"
+            />
             )}
 
             {showDuplicatesOnly ? (

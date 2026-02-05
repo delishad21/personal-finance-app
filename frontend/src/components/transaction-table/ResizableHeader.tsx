@@ -7,6 +7,7 @@ interface ResizableHeaderProps {
   resizable?: boolean;
   flex?: boolean;
   columnWidth?: number;
+  minWidth?: number;
   onResizeStart?: (columnKey: string, e: React.MouseEvent) => void;
 }
 
@@ -17,6 +18,7 @@ export function ResizableHeader({
   resizable = true,
   flex = false,
   columnWidth,
+  minWidth,
   onResizeStart,
 }: ResizableHeaderProps) {
   return (
@@ -24,7 +26,7 @@ export function ResizableHeader({
       className={`relative py-3 px-4 font-medium text-dark dark:text-white ${align === "right" ? "text-right" : "text-left"}`}
       style={{
         width: flex ? undefined : columnWidth,
-        minWidth: flex ? 150 : 60,
+        minWidth: flex ? 150 : minWidth ?? 60,
       }}
     >
       {children}
