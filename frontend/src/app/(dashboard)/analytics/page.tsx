@@ -1,12 +1,23 @@
-export default function AnalyticsPage() {
+import { getMonthlyAnalytics } from "@/app/actions/analytics";
+import { getTransactionYears } from "@/app/actions/transactions";
+import { AnalyticsClient } from "@/components/analytics/AnalyticsClient";
+
+export default async function AnalyticsPage() {
+  const now = new Date();
+  const defaultYear = now.getFullYear();
+  const defaultMonth = now.getMonth() + 1;
+
+  const [initialData, availableYears] = await Promise.all([
+    getMonthlyAnalytics(defaultYear, defaultMonth),
+    getTransactionYears(),
+  ]);
+
+  const years =
+    availableYears.length > 0
+      ? availableYears
+      : [defaultYear, defaultYear - 1];
+
   return (
-    <div>
-      <h2 className="mb-4 text-2xl font-semibold text-dark dark:text-white">
-        Analytics
-      </h2>
-      <p className="text-dark-5 dark:text-dark-6">
-        Monthly analytics and spending insights
-      </p>
-    </div>
+    <AnalyticsClient initialData={initialData} availableYears={years} />
   );
 }

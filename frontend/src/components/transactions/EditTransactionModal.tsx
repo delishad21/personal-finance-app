@@ -83,10 +83,27 @@ export function EditTransactionModal({
 
   if (!isOpen) return null;
 
+  const parseAmount = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = typeof value === "number" ? value : Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const formatAmount = (value: number | string | null | undefined) => {
+    const parsed = parseAmount(value);
+    return parsed === null ? "" : parsed.toFixed(2);
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await onSave(formData);
+      const payload = {
+        ...formData,
+        amountIn: parseAmount(formData.amountIn),
+        amountOut: parseAmount(formData.amountOut),
+        balance: parseAmount(formData.balance),
+      };
+      await onSave(payload);
       onClose();
     } catch (error) {
       console.error("Failed to save transaction:", error);
@@ -95,9 +112,12 @@ export function EditTransactionModal({
     }
   };
 
-  const handleAmountChange = (field: "amountIn" | "amountOut", value: string) => {
+  const handleAmountChange = (
+    field: "amountIn" | "amountOut",
+    value: string,
+  ) => {
     const numValue = value ? parseFloat(value) : null;
-    
+
     // When setting one amount, clear the other
     if (field === "amountIn") {
       setFormData({
@@ -154,6 +174,10 @@ export function EditTransactionModal({
             <DatePicker
               value={formData.date}
               onChange={(date) => setFormData({ ...formData, date })}
+              triggerProps={{
+                className:
+                  "rounded-lg border border-stroke dark:border-dark-3 bg-white dark:bg-dark-2 hover:border-primary dark:hover:border-primary",
+              }}
             />
           </div>
 
@@ -232,7 +256,7 @@ export function EditTransactionModal({
               <TextInput
                 type="text"
                 inputMode="decimal"
-                value={formData.amountIn !== null ? formData.amountIn.toFixed(2) : ""}
+                value={formatAmount(formData.amountIn)}
                 onChange={(e) => handleAmountChange("amountIn", e.target.value)}
                 placeholder="0.00"
                 disabled={formData.amountOut !== null}
@@ -247,8 +271,10 @@ export function EditTransactionModal({
               <TextInput
                 type="text"
                 inputMode="decimal"
-                value={formData.amountOut !== null ? formData.amountOut.toFixed(2) : ""}
-                onChange={(e) => handleAmountChange("amountOut", e.target.value)}
+                value={formatAmount(formData.amountOut)}
+                onChange={(e) =>
+                  handleAmountChange("amountOut", e.target.value)
+                }
                 placeholder="0.00"
                 disabled={formData.amountIn !== null}
               />
@@ -263,7 +289,7 @@ export function EditTransactionModal({
             <TextInput
               type="text"
               inputMode="decimal"
-              value={formData.balance !== null ? formData.balance.toFixed(2) : ""}
+              value={formatAmount(formData.balance)}
               onChange={(e) =>
                 setFormData({
                   ...formData,

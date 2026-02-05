@@ -128,7 +128,9 @@ export function TransactionTable({
 
   const visibleRows = transactions
     .map((transaction, index) => ({ transaction, index }))
-    .filter(({ index }) => (showDuplicatesOnly ? duplicates?.has(index) : true));
+    .filter(({ index }) =>
+      showDuplicatesOnly ? duplicates?.has(index) : true,
+    );
 
   const handleTableKeyDown = (event: KeyboardEvent) => {
     if (event.key !== "Tab") return;
@@ -294,122 +296,115 @@ export function TransactionTable({
           </thead>
           <tbody>
             {visibleRows.map(({ transaction, index }, visibleIndex) => {
-                const rowDuplicates = duplicates?.get(index);
-                const hasDuplicates = rowDuplicates && rowDuplicates.length > 0;
-                const isSelected = selectedIndices?.has(index);
+              const rowDuplicates = duplicates?.get(index);
+              const hasDuplicates = rowDuplicates && rowDuplicates.length > 0;
+              const isSelected = selectedIndices?.has(index);
 
-                const internalCategoryId =
-                  internalCategory?.id ?? "__internal__";
-                const reimbursementCategoryId =
-                  reimbursementCategory?.id ?? "__reimbursement__";
-                const linkageType = transaction.linkage?.type;
-                const displayCategoryId =
-                  linkageType === "internal"
-                    ? internalCategoryId
-                    : linkageType === "reimbursement"
-                      ? reimbursementCategoryId
-                      : transaction.categoryId;
+              const internalCategoryId = internalCategory?.id ?? "__internal__";
+              const reimbursementCategoryId =
+                reimbursementCategory?.id ?? "__reimbursement__";
+              const linkageType = transaction.linkage?.type;
+              const displayCategoryId =
+                linkageType === "internal"
+                  ? internalCategoryId
+                  : linkageType === "reimbursement"
+                    ? reimbursementCategoryId
+                    : transaction.categoryId;
 
-                return (
-                  <Fragment key={`transaction-${index}`}>
-                    <tr
-                      className={`border-b hover:bg-gray-1 dark:hover:bg-dark-3/50 transition-colors group ${
-                        hasDuplicates
-                          ? "border-2 border-red dark:border-red-light"
-                          : "border-stroke dark:border-dark-3"
-                      }`}
+              return (
+                <Fragment key={`transaction-${index}`}>
+                  <tr
+                    className={`border-b hover:bg-gray-1 dark:hover:bg-dark-3/50 transition-colors group ${
+                      hasDuplicates
+                        ? "border-2 border-red dark:border-red-light"
+                        : "border-stroke dark:border-dark-3"
+                    }`}
+                  >
+                    {/* Checkbox column */}
+                    <td
+                      className="py-0 px-4"
+                      style={{ width: columnWidths.checkbox }}
                     >
-                      {/* Checkbox column */}
-                      <td
-                        className="py-0 px-4"
-                        style={{ width: columnWidths.checkbox }}
-                      >
-                        <div className="flex items-center justify-center">
-                          <Checkbox
-                            checked={isSelected || false}
-                            onChange={() => onToggleSelection?.(index)}
-                          />
-                        </div>
-                      </td>
+                      <div className="flex items-center justify-center">
+                        <Checkbox
+                          checked={isSelected || false}
+                          onChange={() => onToggleSelection?.(index)}
+                        />
+                      </div>
+                    </td>
 
-                      <td
-                        className="py-0 px-2"
-                        style={{ width: columnWidths.expand }}
+                    <td
+                      className="py-0 px-2"
+                      style={{ width: columnWidths.expand }}
+                    >
+                      <button
+                        onClick={() => toggleRowExpanded(index)}
+                        className="p-1 hover:bg-gray-2 dark:hover:bg-dark-3 rounded"
                       >
-                        <button
-                          onClick={() => toggleRowExpanded(index)}
-                          className="p-1 hover:bg-gray-2 dark:hover:bg-dark-3 rounded"
-                        >
-                          {expandedRows.has(index) ? (
-                            <ChevronDown className="h-4 w-4 text-dark-5 dark:text-dark-6" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-dark-5 dark:text-dark-6" />
-                          )}
-                        </button>
-                      </td>
+                        {expandedRows.has(index) ? (
+                          <ChevronDown className="h-4 w-4 text-dark-5 dark:text-dark-6" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-dark-5 dark:text-dark-6" />
+                        )}
+                      </button>
+                    </td>
 
-                      <td
-                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
-                        style={{ width: columnWidths.date }}
-                      >
-                        <div className="w-full h-full min-h-[44px] flex items-stretch">
-                          <DatePicker
-                            value={transaction.date}
-                            onChange={(date) =>
-                              onUpdateTransaction(index, "date", date)
-                            }
-                            disabled={showDuplicatesOnly}
-                            triggerProps={{
-                              "data-row": `${visibleIndex}`,
-                              "data-col": "date",
-                              className:
-                                "py-2 min-h-[44px] items-center hover:bg-transparent dark:hover:bg-transparent",
-                            }}
-                          />
-                        </div>
-                      </td>
+                    <td
+                      className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
+                      style={{ width: columnWidths.date }}
+                    >
+                      <div className="w-full h-full min-h-[44px] flex items-stretch">
+                        <DatePicker
+                          value={transaction.date}
+                          onChange={(date) =>
+                            onUpdateTransaction(index, "date", date)
+                          }
+                          disabled={showDuplicatesOnly}
+                          triggerProps={{
+                            "data-row": `${visibleIndex}`,
+                            "data-col": "date",
+                            className:
+                              "py-2 min-h-[44px] items-center hover:bg-transparent dark:hover:bg-transparent",
+                          }}
+                        />
+                      </div>
+                    </td>
 
-                      <td
-                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
-                        style={{ width: columnWidths.label }}
-                      >
-                        <div className="w-full flex items-stretch h-full min-h-[44px]">
-                          <input
-                            type="text"
-                            value={transaction.label || ""}
-                            onChange={(e) =>
-                              onUpdateTransaction(
-                                index,
-                                "label",
-                                e.target.value,
-                              )
-                            }
-                            placeholder="Add label..."
-                            disabled={showDuplicatesOnly}
-                            data-row={`${visibleIndex}`}
-                            data-col="label"
-                            className="flex-1 h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 disabled:cursor-not-allowed"
-                          />
-                          {!showDuplicatesOnly && (
-                            <button
-                              onClick={() =>
-                                handleCopyDescriptionToLabel(index)
-                              }
+                    <td
+                      className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
+                      style={{ width: columnWidths.label }}
+                    >
+                      <div className="w-full flex items-stretch h-full min-h-[44px]">
+                        <input
+                          type="text"
+                          value={transaction.label || ""}
+                          onChange={(e) =>
+                            onUpdateTransaction(index, "label", e.target.value)
+                          }
+                          placeholder="Add label..."
+                          disabled={showDuplicatesOnly}
+                          data-row={`${visibleIndex}`}
+                          data-col="label"
+                          className="flex-1 h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 disabled:cursor-not-allowed"
+                        />
+                        {!showDuplicatesOnly && (
+                          <button
+                            onClick={() => handleCopyDescriptionToLabel(index)}
                             className="p-2 opacity-0 group-hover:opacity-100 hover:bg-gray-2 dark:hover:bg-dark-3 rounded transition-opacity self-center"
                             title="Copy description to label"
                           >
-                              <ArrowLeft className="h-3.5 w-3.5 text-dark-5 dark:text-dark-6" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                            <ArrowLeft className="h-3.5 w-3.5 text-dark-5 dark:text-dark-6" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
 
-                      <td
-                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
-                        style={{ width: columnWidths.description }}
-                      >
-                        <div className="w-full h-full min-h-[44px] flex items-stretch">
-                          <textarea
+                    <td
+                      className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
+                      style={{ width: columnWidths.description }}
+                    >
+                      <div className="w-full h-full min-h-[44px] flex items-stretch">
+                        <textarea
                           value={transaction.description}
                           onChange={(e) =>
                             onUpdateTransaction(
@@ -425,124 +420,120 @@ export function TransactionTable({
                           data-col="description"
                           className="w-full h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 resize-none disabled:cursor-not-allowed"
                         />
-                        </div>
-                      </td>
+                      </div>
+                    </td>
 
-                      <td
-                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
-                        style={{ width: columnWidths.category }}
-                      >
-                        <div className="w-full h-full min-h-[44px] flex items-stretch">
-                          <CategorySelect
-                            value={displayCategoryId}
-                            categories={displayCategories}
-                            onChange={(categoryId) =>
-                              onUpdateTransaction(
-                                index,
-                                "categoryId",
-                                categoryId,
-                              )
-                            }
-                            onAddClick={onAddCategoryClick}
-                            variant="borderless"
-                            excludeReserved={!transaction.linkage}
-                            dropdownPlacement="inline"
-                            disabled={showDuplicatesOnly || !!transaction.linkage}
-                            lockedByLinkage={!!transaction.linkage}
-                            showOpenRing={false}
-                            triggerProps={{
-                              "data-row": `${visibleIndex}`,
-                              "data-col": "category",
-                              className:
-                                "py-2 min-h-[44px] items-center hover:bg-transparent dark:hover:bg-transparent",
-                            }}
-                          />
-                        </div>
-                      </td>
+                    <td
+                      className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
+                      style={{ width: columnWidths.category }}
+                    >
+                      <div className="w-full h-full min-h-[44px] flex items-stretch">
+                        <CategorySelect
+                          value={displayCategoryId}
+                          categories={displayCategories}
+                          onChange={(categoryId) =>
+                            onUpdateTransaction(index, "categoryId", categoryId)
+                          }
+                          onAddClick={onAddCategoryClick}
+                          variant="borderless"
+                          excludeReserved={!transaction.linkage}
+                          dropdownPlacement="inline"
+                          disabled={showDuplicatesOnly || !!transaction.linkage}
+                          lockedByLinkage={!!transaction.linkage}
+                          showOpenRing={false}
+                          triggerProps={{
+                            "data-row": `${visibleIndex}`,
+                            "data-col": "category",
+                            className:
+                              "py-2 min-h-[44px] items-center hover:bg-transparent dark:hover:bg-transparent",
+                          }}
+                        />
+                      </div>
+                    </td>
 
-                      <td
-                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
-                        style={{ width: columnWidths.amountIn }}
-                      >
-                        <div className="w-full h-full min-h-[44px] flex items-stretch">
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={transaction.amountIn || ""}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              onUpdateTransaction(
-                                index,
-                                "amountIn",
-                                val ? parseFloat(val) || 0 : undefined,
-                              );
-                            }}
-                            placeholder="-"
-                            disabled={showDuplicatesOnly}
-                            data-row={`${visibleIndex}`}
-                            data-col="amountIn"
-                            className="w-full h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-green font-medium outline-none focus:ring-0 disabled:cursor-not-allowed"
-                          />
-                        </div>
-                      </td>
+                    <td
+                      className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
+                      style={{ width: columnWidths.amountIn }}
+                    >
+                      <div className="w-full h-full min-h-[44px] flex items-stretch">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={transaction.amountIn || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            onUpdateTransaction(
+                              index,
+                              "amountIn",
+                              val ? parseFloat(val) || 0 : undefined,
+                            );
+                          }}
+                          placeholder="-"
+                          disabled={showDuplicatesOnly}
+                          data-row={`${visibleIndex}`}
+                          data-col="amountIn"
+                          className="w-full h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-green font-medium outline-none focus:ring-0 disabled:cursor-not-allowed"
+                        />
+                      </div>
+                    </td>
 
-                      <td
-                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
-                        style={{ width: columnWidths.amountOut }}
-                      >
-                        <div className="w-full h-full min-h-[44px] flex items-stretch">
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={transaction.amountOut || ""}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              onUpdateTransaction(
-                                index,
-                                "amountOut",
-                                val ? parseFloat(val) || 0 : undefined,
-                              );
-                            }}
-                            placeholder="-"
-                            disabled={showDuplicatesOnly}
-                            data-row={`${visibleIndex}`}
-                            data-col="amountOut"
-                            className="w-full h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-red font-medium outline-none focus:ring-0 disabled:cursor-not-allowed"
-                          />
-                        </div>
-                      </td>
-                    </tr>
+                    <td
+                      className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
+                      style={{ width: columnWidths.amountOut }}
+                    >
+                      <div className="w-full h-full min-h-[44px] flex items-stretch">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={transaction.amountOut || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            onUpdateTransaction(
+                              index,
+                              "amountOut",
+                              val ? parseFloat(val) || 0 : undefined,
+                            );
+                          }}
+                          placeholder="-"
+                          disabled={showDuplicatesOnly}
+                          data-row={`${visibleIndex}`}
+                          data-col="amountOut"
+                          className="w-full h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-red font-medium outline-none focus:ring-0 disabled:cursor-not-allowed"
+                        />
+                      </div>
+                    </td>
+                  </tr>
 
-                    {expandedRows.has(index) && (
-                      <TransactionRowExpanded
-                        transaction={transaction}
-                        colSpan={8}
-                        linkage={transaction.linkage || null}
-                        showOptions={!showDuplicatesOnly && !!onLinkageChange}
-                        disabled={isImporting}
-                        linkedCount={
-                          (transaction.linkage?._pendingBatchIndices?.length ||
-                            0) + (transaction.linkage?.reimburses?.length || 0)
-                        }
-                        onLinkageChange={
-                          onLinkageChange
-                            ? (linkage) => onLinkageChange(index, linkage)
-                            : undefined
-                        }
-                        onSelectReimbursement={
-                          onOpenReimbursementSelector
-                            ? () => onOpenReimbursementSelector(index)
-                            : undefined
-                        }
-                      />
-                    )}
+                  {expandedRows.has(index) && (
+                    <TransactionRowExpanded
+                      transaction={transaction}
+                      colSpan={8}
+                      linkage={transaction.linkage || null}
+                      showOptions={!showDuplicatesOnly && !!onLinkageChange}
+                      disabled={isImporting}
+                      linkedCount={
+                        (transaction.linkage?._pendingBatchIndices?.length ||
+                          0) + (transaction.linkage?.reimburses?.length || 0)
+                      }
+                      onLinkageChange={
+                        onLinkageChange
+                          ? (linkage) => onLinkageChange(index, linkage)
+                          : undefined
+                      }
+                      onSelectReimbursement={
+                        onOpenReimbursementSelector
+                          ? () => onOpenReimbursementSelector(index)
+                          : undefined
+                      }
+                    />
+                  )}
 
-                    {hasDuplicates && (
-                      <DuplicateMatchList matches={rowDuplicates} colSpan={8} />
-                    )}
-                  </Fragment>
-                );
-              })}
+                  {hasDuplicates && (
+                    <DuplicateMatchList matches={rowDuplicates} colSpan={8} />
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

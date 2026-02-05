@@ -1,6 +1,9 @@
 import prisma from "../../lib/prisma";
 import { Prisma } from "@prisma/client";
-import { ImportTransactionInput } from "../duplicates/duplicate-detector";
+import {
+  ImportTransactionInput,
+  TransactionLinkage,
+} from "../duplicates/duplicate-detector";
 
 export class TransactionRepository {
   private static buildWhere(
@@ -18,7 +21,7 @@ export class TransactionRepository {
     excludeIds?: string[],
     ids?: string[],
   ) {
-    const where: any = { userId };
+    const where: Prisma.TransactionWhereInput = { userId };
 
     if (ids && ids.length > 0) {
       where.id = { in: ids };
@@ -107,8 +110,12 @@ export class TransactionRepository {
         balance: t.balance,
         accountIdentifier: t.accountIdentifier,
         source: t.source,
-        metadata: t.metadata ? (t.metadata as Prisma.InputJsonValue) : Prisma.DbNull,
-        linkage: t.linkage ? (t.linkage as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+        metadata: t.metadata
+          ? (t.metadata as Prisma.InputJsonValue)
+          : Prisma.DbNull,
+        linkage: t.linkage
+          ? (t.linkage as unknown as Prisma.InputJsonValue)
+          : Prisma.DbNull,
         importBatchId,
       })),
     });
@@ -376,10 +383,18 @@ export class TransactionRepository {
   /**
    * Update linkage for a transaction
    */
-  static async updateLinkage(id: string, userId: string, linkage: any) {
+  static async updateLinkage(
+    id: string,
+    userId: string,
+    linkage: TransactionLinkage | Prisma.InputJsonValue | null,
+  ) {
+    const linkageData =
+      linkage === null
+        ? Prisma.DbNull
+        : (linkage as Prisma.InputJsonValue);
     return prisma.transaction.update({
       where: { id, userId },
-      data: { linkage },
+      data: { linkage: linkageData },
       include: { category: true },
     });
   }
@@ -390,12 +405,16 @@ export class TransactionRepository {
   static async updateLinkageAndCategory(
     id: string,
     userId: string,
-    linkage: any,
+    linkage: TransactionLinkage | Prisma.InputJsonValue | null,
     categoryId: string,
   ) {
+    const linkageData =
+      linkage === null
+        ? Prisma.DbNull
+        : (linkage as Prisma.InputJsonValue);
     return prisma.transaction.update({
       where: { id, userId },
-      data: { linkage, categoryId },
+      data: { linkage: linkageData, categoryId },
       include: { category: true },
     });
   }

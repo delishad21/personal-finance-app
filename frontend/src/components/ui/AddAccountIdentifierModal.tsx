@@ -3,25 +3,8 @@
 import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "./Button";
-
-const PRESET_COLORS = [
-  "#ef4444",
-  "#f97316",
-  "#f59e0b",
-  "#eab308",
-  "#84cc16",
-  "#22c55e",
-  "#10b981",
-  "#14b8a6",
-  "#06b6d4",
-  "#0ea5e9",
-  "#3b82f6",
-  "#6366f1",
-  "#8b5cf6",
-  "#a855f7",
-  "#d946ef",
-  "#ec4899",
-];
+import { TextInput } from "./TextInput";
+import { ColorSelect } from "./ColorSelect";
 
 interface AddAccountIdentifierModalProps {
   isOpen: boolean;
@@ -76,34 +59,15 @@ export function AddAccountIdentifierModal({
             <label className="block text-sm font-medium text-dark dark:text-white mb-2">
               Account Identifier
             </label>
-            <input
-              type="text"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="e.g. 272-11324-6 or WeChat 96317826"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-stroke dark:border-dark-3 bg-white dark:bg-dark-2 text-dark dark:text-white outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-dark dark:text-white mb-3">
-              Select Color
-            </label>
-            <div className="grid grid-cols-8 gap-2">
-              {PRESET_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => setSelectedColor(color)}
-                  className={`w-full aspect-square rounded-lg border-2 transition-all hover:scale-110 ${
-                    selectedColor === color
-                      ? "border-dark dark:border-white scale-110 shadow-lg"
-                      : "border-transparent hover:border-stroke dark:hover:border-dark-3"
-                  }`}
-                  style={{ backgroundColor: color }}
-                  title={color}
-                />
-              ))}
+            <div className="flex items-center gap-3">
+              <ColorSelect value={selectedColor} onChange={setSelectedColor} />
+              <TextInput
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="e.g. 6420912424"
+                className="w-full flex-1"
+              />
             </div>
           </div>
         </div>

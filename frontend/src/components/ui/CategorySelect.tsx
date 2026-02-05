@@ -134,7 +134,9 @@ export function CategorySelect({
         ? "bg-transparent border border-transparent hover:bg-gray-2 dark:hover:bg-dark-3 hover:rounded-none"
         : "bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3 hover:border-primary dark:hover:border-primary"
     } ${
-      isOpen && showOpenRing ? "ring-2 ring-inset ring-primary border-primary" : ""
+      isOpen && showOpenRing
+        ? "ring-2 ring-inset ring-primary border-primary"
+        : ""
     }`,
     triggerClassNameProp,
   ]

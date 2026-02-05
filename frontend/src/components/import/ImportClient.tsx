@@ -19,10 +19,22 @@ import { ReimbursementSelectorModal } from "./ReimbursementSelectorModal";
 import type { TransactionLinkage } from "@/components/transaction-table/types";
 
 const PRESET_COLORS = [
-  "#ef4444", "#f97316", "#f59e0b", "#eab308",
-  "#84cc16", "#22c55e", "#10b981", "#14b8a6",
-  "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
-  "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#eab308",
+  "#84cc16",
+  "#22c55e",
+  "#10b981",
+  "#14b8a6",
+  "#06b6d4",
+  "#0ea5e9",
+  "#3b82f6",
+  "#6366f1",
+  "#8b5cf6",
+  "#a855f7",
+  "#d946ef",
+  "#ec4899",
 ];
 
 type ImportStage = "upload" | "review" | "duplicates" | "complete";
@@ -93,8 +105,9 @@ export function ImportClient({
   const [accountColor, setAccountColor] = useState<string>("#6366f1");
   const [isNewAccount, setIsNewAccount] = useState(false);
   const [showNewAccountModal, setShowNewAccountModal] = useState(false);
-  const [accountIdentifiers, setAccountIdentifiers] =
-    useState<AccountIdentifier[]>(initialAccountNumbers);
+  const [accountIdentifiers, setAccountIdentifiers] = useState<
+    AccountIdentifier[]
+  >(initialAccountNumbers);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [isUploading, setIsUploading] = useState(false);
@@ -131,7 +144,9 @@ export function ImportClient({
 
   // Reimbursement selector modal state
   const [reimbursementModalOpen, setReimbursementModalOpen] = useState(false);
-  const [reimbursementTargetIndex, setReimbursementTargetIndex] = useState<number | null>(null);
+  const [reimbursementTargetIndex, setReimbursementTargetIndex] = useState<
+    number | null
+  >(null);
 
   const showModal = (type: ModalType, title: string, message: string) => {
     setModalState({ isOpen: true, type, title, message });
@@ -142,7 +157,10 @@ export function ImportClient({
   };
 
   // Handle linkage changes (internal/reimbursement marking)
-  const handleLinkageChange = (index: number, linkage: TransactionLinkage | null) => {
+  const handleLinkageChange = (
+    index: number,
+    linkage: TransactionLinkage | null,
+  ) => {
     const updated = [...editedTransactions];
     updated[index] = { ...updated[index], linkage };
 
@@ -180,7 +198,8 @@ export function ImportClient({
   // Confirm reimbursement selection
   const handleConfirmReimbursement = (linkage: TransactionLinkage) => {
     if (reimbursementTargetIndex !== null) {
-      const currentLinkage = editedTransactions[reimbursementTargetIndex]?.linkage;
+      const currentLinkage =
+        editedTransactions[reimbursementTargetIndex]?.linkage;
       if (currentLinkage?.type === "internal") {
         showModal(
           "warning",
@@ -251,7 +270,8 @@ export function ImportClient({
           setIsNewAccount(false);
         } else {
           // New account - assign random color and prompt user
-          const randomColor = PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)];
+          const randomColor =
+            PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)];
           setAccountIdentifier(detectedAccount);
           setAccountColor(randomColor);
           setIsNewAccount(true);
@@ -440,6 +460,20 @@ export function ImportClient({
     setStage("upload");
   };
 
+  const resetImportFlow = () => {
+    setStage("upload");
+    setParsedData(null);
+    setEditedTransactions([]);
+    setFile(null);
+    setDuplicates(new Map());
+    setSelectedIndices(new Set());
+    setNonDuplicateIndices(new Set());
+    setAccountIdentifier("");
+    setAccountColor("#6366f1");
+    setIsNewAccount(false);
+    setShowNewAccountModal(false);
+  };
+
   const handleBackFromDuplicates = () => {
     // Go back to review stage, restore original selection
     setStage("review");
@@ -540,7 +574,9 @@ export function ImportClient({
             stage === "review" ? handleBackFromReview : handleBackFromDuplicates
           }
           onLinkageChange={stage === "review" ? handleLinkageChange : undefined}
-          onOpenReimbursementSelector={stage === "review" ? handleOpenReimbursementSelector : undefined}
+          onOpenReimbursementSelector={
+            stage === "review" ? handleOpenReimbursementSelector : undefined
+          }
         />
       )}
 
@@ -555,7 +591,7 @@ export function ImportClient({
         accountIdentifier={accountIdentifier}
         defaultColor={accountColor}
         onConfirm={handleConfirmAccountColor}
-        onCancel={() => setShowNewAccountModal(false)}
+        onCancel={resetImportFlow}
       />
 
       <AddAccountIdentifierModal

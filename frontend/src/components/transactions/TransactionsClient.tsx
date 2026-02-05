@@ -99,9 +99,11 @@ export function TransactionsClient({
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingTransaction, setEditingTransaction] =
+    useState<Transaction | null>(null);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
-  const [localCategories, setLocalCategories] = useState<Category[]>(categories);
+  const [localCategories, setLocalCategories] =
+    useState<Category[]>(categories);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -329,7 +331,9 @@ export function TransactionsClient({
         type: "error",
         title: "Error",
         message:
-          error instanceof Error ? error.message : "Failed to update transaction",
+          error instanceof Error
+            ? error.message
+            : "Failed to update transaction",
       });
       throw error;
     }
@@ -689,14 +693,14 @@ export function TransactionsClient({
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowBulkMenu((prev) => !prev)}
-                  className="border border-stroke dark:border-dark-3"
-                >
-                  <MoreHorizontal className="w-4 h-4" />
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowBulkMenu((prev) => !prev)}
+                    className="border border-stroke dark:border-dark-3"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
                 </div>
 
                 {showBulkMenu && (
@@ -755,7 +759,6 @@ export function TransactionsClient({
                           Apply Date
                         </Button>
                       </div>
-
                     </div>
                   </div>
                 )}

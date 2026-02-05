@@ -243,11 +243,11 @@ export class TransactionService {
         importedCount: result.count,
         batchId: importBatchId,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error committing import:", error);
       return {
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }

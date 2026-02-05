@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Pencil, Trash2, ArrowLeftRight, Receipt, Link2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Pencil,
+  Trash2,
+  ArrowLeftRight,
+  Receipt,
+  Link2,
+} from "lucide-react";
 import { Checkbox } from "@/components/ui/Checkbox";
 
 interface TransactionLinkage {
@@ -113,10 +121,7 @@ export function TransactionCard({
         )}
         <div className="flex items-start justify-between gap-4">
           {onToggleSelect && (
-            <div
-              className="pt-1"
-              onClick={(event) => event.stopPropagation()}
-            >
+            <div className="pt-1" onClick={(event) => event.stopPropagation()}>
               <Checkbox checked={selected} onChange={onToggleSelect} />
             </div>
           )}
@@ -337,49 +342,56 @@ export function TransactionCard({
               )}
 
             {/* Linked Transactions Section */}
-            {linkedTransactions && (linkedTransactions.reimburses.length > 0 || linkedTransactions.reimbursedBy.length > 0) && (
-              <div className="col-span-2 mt-2">
-                {/* Reimburses Section */}
-                {linkedTransactions.reimburses.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-dark-5 dark:text-dark-6 mb-2 flex items-center gap-2">
-                      <Receipt className="w-4 h-4 text-green" />
-                      <span>Reimburses ({linkedTransactions.reimburses.length})</span>
+            {linkedTransactions &&
+              (linkedTransactions.reimburses.length > 0 ||
+                linkedTransactions.reimbursedBy.length > 0) && (
+                <div className="col-span-2 mt-2">
+                  {/* Reimburses Section */}
+                  {linkedTransactions.reimburses.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-dark-5 dark:text-dark-6 mb-2 flex items-center gap-2">
+                        <Receipt className="w-4 h-4 text-green" />
+                        <span>
+                          Reimburses ({linkedTransactions.reimburses.length})
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {linkedTransactions.reimburses.map((linked) => (
+                          <LinkedTransactionPreview
+                            key={linked.id}
+                            transaction={linked}
+                            formatDate={formatDate}
+                            formatAmount={formatAmount}
+                          />
+                        ))}
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      {linkedTransactions.reimburses.map((linked) => (
-                        <LinkedTransactionPreview
-                          key={linked.id}
-                          transaction={linked}
-                          formatDate={formatDate}
-                          formatAmount={formatAmount}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Reimbursed By Section */}
-                {linkedTransactions.reimbursedBy.length > 0 && (
-                  <div>
-                    <div className="text-dark-5 dark:text-dark-6 mb-2 flex items-center gap-2">
-                      <Link2 className="w-4 h-4 text-green" />
-                      <span>Reimbursed By ({linkedTransactions.reimbursedBy.length})</span>
+                  {/* Reimbursed By Section */}
+                  {linkedTransactions.reimbursedBy.length > 0 && (
+                    <div>
+                      <div className="text-dark-5 dark:text-dark-6 mb-2 flex items-center gap-2">
+                        <Link2 className="w-4 h-4 text-green" />
+                        <span>
+                          Reimbursed By (
+                          {linkedTransactions.reimbursedBy.length})
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {linkedTransactions.reimbursedBy.map((linked) => (
+                          <LinkedTransactionPreview
+                            key={linked.id}
+                            transaction={linked}
+                            formatDate={formatDate}
+                            formatAmount={formatAmount}
+                          />
+                        ))}
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      {linkedTransactions.reimbursedBy.map((linked) => (
-                        <LinkedTransactionPreview
-                          key={linked.id}
-                          transaction={linked}
-                          formatDate={formatDate}
-                          formatAmount={formatAmount}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
           </div>
         </div>
       </div>
@@ -412,7 +424,9 @@ function LinkedTransactionPreview({
       </div>
       <div
         className={`text-sm font-medium ml-3 ${
-          isIncome ? "text-green dark:text-green-light" : "text-red dark:text-red-light"
+          isIncome
+            ? "text-green dark:text-green-light"
+            : "text-red dark:text-red-light"
         }`}
       >
         {isIncome ? "+" : "-"}

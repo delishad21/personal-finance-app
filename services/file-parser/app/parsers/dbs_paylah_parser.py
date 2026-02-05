@@ -42,7 +42,7 @@ def parse(content: bytes) -> list[dict]:
         # Extract metadata
         account_metadata = {}
 
-        # Statement date - format: "22 Dec 2025 6596317826 8888880012044058"
+        # Statement date - format: "22 Dec 2025 6593417426 888888002335658"
         # Note: accountNumber is extracted but not stored in metadata (use accountIdentifier field instead)
         match = re.search(r"(\d{1,2}\s+\w+\s+(\d{4}))\s+\d{10}\s+(\d{16})", all_text)
         if match:
