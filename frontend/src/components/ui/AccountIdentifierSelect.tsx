@@ -1,44 +1,31 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { HTMLAttributes } from "react";
-import { ChevronDown, Plus, Check, Lock } from "lucide-react";
+import { ChevronDown, Plus, Check, Sparkles } from "lucide-react";
 
-interface Category {
+interface AccountIdentifier {
   id: string;
-  name: string;
+  accountIdentifier: string;
   color: string;
 }
 
-interface CategorySelectProps {
+interface AccountIdentifierSelectProps {
   value?: string;
-  categories: Category[];
-  onChange: (categoryId: string) => void;
+  accountIdentifiers: AccountIdentifier[];
+  onChange: (accountIdentifier: string) => void;
   onAddClick: () => void;
   disabled?: boolean;
-  lockedByLinkage?: boolean;
-  variant?: "default" | "borderless";
-  excludeReserved?: boolean;
-  dropdownPlacement?: "fixed" | "inline";
-  showOpenRing?: boolean;
-  triggerProps?: HTMLAttributes<HTMLButtonElement> & {
-    [key: `data-${string}`]: string;
-  };
+  newAccountBadge?: boolean; // Show "New" badge for new accounts
 }
 
-export function CategorySelect({
+export function AccountIdentifierSelect({
   value,
-  categories,
+  accountIdentifiers,
   onChange,
   onAddClick,
   disabled = false,
-  lockedByLinkage = false,
-  variant = "default",
-  excludeReserved = false,
-  dropdownPlacement = "fixed",
-  showOpenRing = true,
-  triggerProps,
-}: CategorySelectProps) {
+  newAccountBadge = false,
+}: AccountIdentifierSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({
     top: 0,
@@ -49,17 +36,9 @@ export function CategorySelect({
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const reservedNames = ["internal", "reimbursement"];
-  const filteredCategories = categories.filter((cat) => {
-    const name = cat.name.toLowerCase();
-    if (name === "uncategorized") return false;
-    if (excludeReserved && reservedNames.includes(name)) return false;
-    return true;
-  });
-  const selectedCategory = filteredCategories.find((c) => c.id === value);
+  const selectedAccount = accountIdentifiers.find((a) => a.accountIdentifier === value);
 
   const updateDropdownPosition = () => {
-    if (dropdownPlacement === "inline") return;
     if (!containerRef.current) return;
 
     const rect = containerRef.current.getBoundingClientRect();
@@ -97,7 +76,6 @@ export function CategorySelect({
 
   useEffect(() => {
     if (isOpen) {
-      if (dropdownPlacement === "inline") return;
       updateDropdownPosition();
 
       // Update position on scroll
@@ -114,10 +92,10 @@ export function CategorySelect({
         window.removeEventListener("resize", handleScroll);
       };
     }
-  }, [isOpen, dropdownPlacement]);
+  }, [isOpen]);
 
-  const handleSelect = (categoryId: string) => {
-    onChange(categoryId);
+  const handleSelect = (accountIdentifier: string) => {
+    onChange(accountIdentifier);
     setIsOpen(false);
   };
 
@@ -126,115 +104,107 @@ export function CategorySelect({
     onAddClick();
   };
 
-  const { className: triggerClassNameProp, ...triggerRestProps } =
-    triggerProps || {};
-  const triggerClassName = [
-    `w-full h-full flex items-center px-4 py-3 text-sm text-left rounded-lg outline-none cursor-pointer transition-all disabled:cursor-not-allowed ${
-      variant === "borderless"
-        ? "bg-transparent border border-transparent hover:bg-gray-2 dark:hover:bg-dark-3 hover:rounded-none"
-        : "bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3 hover:border-primary dark:hover:border-primary"
-    } ${
-      isOpen && showOpenRing ? "ring-2 ring-inset ring-primary border-primary" : ""
-    }`,
-    triggerClassNameProp,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   return (
-    <div ref={containerRef} className="relative w-full h-full">
+    <div ref={containerRef} className="relative">
       {/* Trigger Button */}
       <button
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        {...triggerRestProps}
-        className={triggerClassName}
+        className={`w-full flex items-center px-4 py-3 text-sm text-left bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3 rounded-lg outline-none cursor-pointer hover:border-primary dark:hover:border-primary transition-all disabled:cursor-not-allowed disabled:hover:border-stroke disabled:dark:hover:border-dark-3 ${
+          isOpen ? "ring-2 ring-inset ring-primary border-primary" : ""
+        }`}
       >
-        {selectedCategory ? (
+        {selectedAccount ? (
           <>
             <div
               className="w-2.5 h-2.5 rounded-full mr-2 shrink-0"
-              style={{ backgroundColor: selectedCategory.color }}
+              style={{ backgroundColor: selectedAccount.color }}
             />
             <span className="flex-1 truncate font-medium text-dark dark:text-white">
-              {selectedCategory.name}
+              {selectedAccount.accountIdentifier}
             </span>
+            {newAccountBadge && (
+              <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary rounded-full flex items-center gap-1">
+                <Sparkles className="h-3 w-3" />
+                New
+              </span>
+            )}
+          </>
+        ) : value ? (
+          <>
+            <div className="w-2.5 h-2.5 rounded-full mr-2 shrink-0 bg-primary" />
+            <span className="flex-1 truncate font-medium text-dark dark:text-white">
+              {value}
+            </span>
+            {newAccountBadge && (
+              <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary rounded-full flex items-center gap-1">
+                <Sparkles className="h-3 w-3" />
+                New
+              </span>
+            )}
           </>
         ) : (
           <span className="flex-1 text-dark-5 dark:text-dark-6">
-            Uncategorized
+            No Account
           </span>
         )}
-        {lockedByLinkage ? (
-          <Lock className="h-4 w-4 text-dark-5 dark:text-dark-6 ml-2 flex-shrink-0" />
-        ) : (
-          <ChevronDown
-            className={`h-4 w-4 text-dark-5 dark:text-dark-6 ml-2 flex-shrink-0 transition-transform ${
-              isOpen ? "rotate-180" : ""
-            }`}
-          />
-        )}
+        <ChevronDown
+          className={`h-4 w-4 text-dark-5 dark:text-dark-6 ml-2 shrink-0 transition-transform ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
       </button>
 
       {/* Dropdown Menu */}
       {isOpen && (
         <div
           ref={dropdownRef}
-          className={`${
-            dropdownPlacement === "inline"
-              ? "absolute left-0 right-0 z-9"
-              : "fixed z-20"
-          } py-1 bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3 rounded-lg shadow-dropdown max-h-60 overflow-auto`}
-          style={
-            dropdownPlacement === "inline"
-              ? {
-                  top: "calc(100% + 4px)",
-                  transformOrigin: "top",
-                }
-              : {
-                  top: showAbove ? "auto" : dropdownPosition.top,
-                  bottom: showAbove
-                    ? window.innerHeight - dropdownPosition.top
-                    : "auto",
-                  left: dropdownPosition.left,
-                  width: dropdownPosition.width,
-                  transformOrigin: showAbove ? "bottom" : "top",
-                }
-          }
+          className="fixed z-20 py-1 bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3 rounded-lg shadow-dropdown max-h-60 overflow-auto"
+          style={{
+            top: showAbove ? "auto" : dropdownPosition.top,
+            bottom: showAbove
+              ? window.innerHeight - dropdownPosition.top
+              : "auto",
+            left: dropdownPosition.left,
+            width: dropdownPosition.width,
+            transformOrigin: showAbove ? "bottom" : "top",
+          }}
         >
-          {/* Uncategorized Option */}
+          {/* No Account Option */}
           <button
             type="button"
             onClick={() => handleSelect("")}
             className="w-full flex items-center px-4 py-2.5 text-sm text-left hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors"
           >
-            <div className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0 bg-dark-5 dark:bg-dark-6" />
+            <div className="w-2.5 h-2.5 rounded-full mr-2 shrink-0 bg-dark-5 dark:bg-dark-6" />
             <span className="flex-1 text-dark dark:text-white">
-              Uncategorized
+              No Account
             </span>
             {!value && <Check className="h-4 w-4 text-primary ml-2" />}
           </button>
 
           {/* Divider */}
-          <div className="h-px bg-stroke dark:bg-dark-3 my-1" />
+          {accountIdentifiers.length > 0 && (
+            <div className="h-px bg-stroke dark:bg-dark-3 my-1" />
+          )}
 
-          {/* Category Options */}
-          {filteredCategories.map((cat) => (
+          {/* Account Options */}
+          {accountIdentifiers.map((account) => (
             <button
-              key={cat.id}
+              key={account.id}
               type="button"
-              onClick={() => handleSelect(cat.id)}
+              onClick={() => handleSelect(account.accountIdentifier)}
               className="w-full flex items-center px-4 py-2.5 text-sm text-left hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors"
             >
               <div
-                className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0"
-                style={{ backgroundColor: cat.color }}
+                className="w-2.5 h-2.5 rounded-full mr-2 shrink-0"
+                style={{ backgroundColor: account.color }}
               />
               <span className="flex-1 text-dark dark:text-white">
-                {cat.name}
+                {account.accountIdentifier}
               </span>
-              {value === cat.id && (
+              {value === account.accountIdentifier && (
                 <Check className="h-4 w-4 text-primary ml-2" />
               )}
             </button>
@@ -243,14 +213,14 @@ export function CategorySelect({
           {/* Divider */}
           <div className="h-px bg-stroke dark:bg-dark-3 my-1" />
 
-          {/* Add New Category */}
+          {/* Add New Account */}
           <button
             type="button"
             onClick={handleAddNew}
             className="w-full flex items-center px-4 py-2.5 text-sm text-left text-primary hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors font-medium"
           >
             <Plus className="h-4 w-4 mr-2" />
-            <span>New Category</span>
+            <span>New Account</span>
           </button>
         </div>
       )}

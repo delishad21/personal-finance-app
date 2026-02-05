@@ -6,6 +6,15 @@ export interface DuplicateMatch {
   matchReasons: string[];
 }
 
+export interface TransactionLinkage {
+  type: "internal" | "reimbursement" | "reimbursed";
+  reimburses?: string[]; // Transaction IDs this transaction reimburses
+  reimbursedBy?: string[]; // Transaction IDs that reimburse this transaction
+  autoDetected?: boolean; // True if parser detected
+  detectionReason?: string; // Why it was detected
+  _pendingBatchIndices?: number[]; // Temp: batch indices (resolved on commit)
+}
+
 export interface ImportTransactionInput {
   date: Date;
   description: string;
@@ -17,6 +26,7 @@ export interface ImportTransactionInput {
   accountIdentifier?: string | null;
   source?: string | null;
   metadata?: any;
+  linkage?: TransactionLinkage | null;
 }
 
 /**

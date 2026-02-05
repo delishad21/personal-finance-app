@@ -111,6 +111,18 @@ export async function POST(request: NextRequest) {
               icon: "label",
               isDefault: true,
             },
+            {
+              name: "Internal",
+              color: "#9ca3af",
+              icon: "arrow-left-right",
+              isDefault: false,
+            },
+            {
+              name: "Reimbursement",
+              color: "#22c55e",
+              icon: "receipt",
+              isDefault: false,
+            },
           ],
         },
       },

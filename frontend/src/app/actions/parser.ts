@@ -3,6 +3,15 @@
 const PARSER_SERVICE_URL =
   process.env.PARSER_SERVICE_URL || "http://file-parser:4000";
 
+interface TransactionLinkage {
+  type: "internal" | "reimbursement" | "reimbursed";
+  reimburses?: string[];
+  reimbursedBy?: string[];
+  autoDetected?: boolean;
+  detectionReason?: string;
+  _pendingBatchIndices?: number[];
+}
+
 interface ParseResult {
   success: boolean;
   filename: string;
@@ -14,7 +23,10 @@ interface ParseResult {
     amountIn?: number;
     amountOut?: number;
     balance?: number;
+    accountIdentifier?: string;
+    accountNumber?: string;
     metadata: Record<string, any>;
+    linkage?: TransactionLinkage | null;
   }>;
   count: number;
 }

@@ -1,4 +1,5 @@
 import prisma from "../../lib/prisma";
+import { Prisma } from "@prisma/client";
 import { ImportTransactionInput } from "../duplicates/duplicate-detector";
 
 export class TransactionRepository {
@@ -106,7 +107,8 @@ export class TransactionRepository {
         balance: t.balance,
         accountIdentifier: t.accountIdentifier,
         source: t.source,
-        metadata: t.metadata,
+        metadata: t.metadata ? (t.metadata as Prisma.InputJsonValue) : Prisma.DbNull,
+        linkage: t.linkage ? (t.linkage as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
         importBatchId,
       })),
     });
@@ -133,7 +135,9 @@ export class TransactionRepository {
     const where = TransactionRepository.buildWhere(userId, filters);
 
     const orderBy =
-      filters?.dateOrder === "asc" ? { date: "asc" } : { date: "desc" };
+      filters?.dateOrder === "asc"
+        ? { date: "asc" as const }
+        : { date: "desc" as const };
 
     const [transactions, total] = await Promise.all([
       prisma.transaction.findMany({
@@ -186,7 +190,9 @@ export class TransactionRepository {
   ) {
     const where = TransactionRepository.buildWhere(userId, filters, excludeIds);
     const orderBy =
-      filters?.dateOrder === "asc" ? { date: "asc" } : { date: "desc" };
+      filters?.dateOrder === "asc"
+        ? { date: "asc" as const }
+        : { date: "desc" as const };
     return prisma.transaction.findMany({
       where,
       include: {
@@ -210,7 +216,16 @@ export class TransactionRepository {
     );
     return prisma.transaction.updateMany({
       where,
-      data: updates,
+      data: {
+        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.label !== undefined && { label: updates.label }),
+        ...(updates.categoryId !== undefined && { categoryId: updates.categoryId }),
+        ...(updates.amountIn !== undefined && { amountIn: updates.amountIn }),
+        ...(updates.amountOut !== undefined && { amountOut: updates.amountOut }),
+        ...(updates.balance !== undefined && { balance: updates.balance }),
+        ...(updates.date !== undefined && { date: updates.date }),
+        ...(updates.accountIdentifier !== undefined && { accountIdentifier: updates.accountIdentifier }),
+      },
     });
   }
 
@@ -232,7 +247,16 @@ export class TransactionRepository {
     const where = TransactionRepository.buildWhere(userId, filters, excludeIds);
     return prisma.transaction.updateMany({
       where,
-      data: updates,
+      data: {
+        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.label !== undefined && { label: updates.label }),
+        ...(updates.categoryId !== undefined && { categoryId: updates.categoryId }),
+        ...(updates.amountIn !== undefined && { amountIn: updates.amountIn }),
+        ...(updates.amountOut !== undefined && { amountOut: updates.amountOut }),
+        ...(updates.balance !== undefined && { balance: updates.balance }),
+        ...(updates.date !== undefined && { date: updates.date }),
+        ...(updates.accountIdentifier !== undefined && { accountIdentifier: updates.accountIdentifier }),
+      },
     });
   }
 
@@ -321,6 +345,72 @@ export class TransactionRepository {
       where: {
         id: { in: ids },
         userId,
+      },
+    });
+  }
+
+  /**
+   * Search transactions for reimbursement linking
+   */
+  static async searchForReimbursement(
+    userId: string,
+    query: string,
+    limit: number = 20,
+  ) {
+    return prisma.transaction.findMany({
+      where: {
+        userId,
+        OR: [
+          { description: { contains: query, mode: "insensitive" } },
+          { label: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      include: {
+        category: true,
+      },
+      take: limit,
+      orderBy: { date: "desc" },
+    });
+  }
+
+  /**
+   * Update linkage for a transaction
+   */
+  static async updateLinkage(id: string, userId: string, linkage: any) {
+    return prisma.transaction.update({
+      where: { id, userId },
+      data: { linkage },
+      include: { category: true },
+    });
+  }
+
+  /**
+   * Update linkage and category for a transaction
+   */
+  static async updateLinkageAndCategory(
+    id: string,
+    userId: string,
+    linkage: any,
+    categoryId: string,
+  ) {
+    return prisma.transaction.update({
+      where: { id, userId },
+      data: { linkage, categoryId },
+      include: { category: true },
+    });
+  }
+
+  /**
+   * Get linked transactions by IDs
+   */
+  static async getLinkedTransactions(userId: string, ids: string[]) {
+    return prisma.transaction.findMany({
+      where: {
+        userId,
+        id: { in: ids },
+      },
+      include: {
+        category: true,
       },
     });
   }

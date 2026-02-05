@@ -1,9 +1,29 @@
 """DBS PayLah! Statement Parser"""
 import re
 from datetime import datetime
+from typing import Optional
 from dateutil import parser as date_parser
 import pdfplumber
 import io
+
+
+def _detect_internal_transaction(description: str) -> Optional[dict]:
+    """Detect if transaction is an internal transfer based on description."""
+    INTERNAL_PATTERNS = [
+        "TOP UP WALLET FROM MY ACCOUNT",
+        "TOP-UP FROM BANK ACCOUNT",
+        "TRANSFER FROM BANK",
+    ]
+
+    description_upper = description.upper()
+    for pattern in INTERNAL_PATTERNS:
+        if pattern in description_upper:
+            return {
+                "type": "internal",
+                "autoDetected": True,
+                "detectionReason": f"Description contains '{pattern}'"
+            }
+    return None
 
 
 def parse(content: bytes) -> list[dict]:
@@ -23,13 +43,15 @@ def parse(content: bytes) -> list[dict]:
         account_metadata = {}
 
         # Statement date - format: "22 Dec 2025 6596317826 8888880012044058"
+        # Note: accountNumber is extracted but not stored in metadata (use accountIdentifier field instead)
         match = re.search(r"(\d{1,2}\s+\w+\s+(\d{4}))\s+\d{10}\s+(\d{16})", all_text)
         if match:
             account_metadata["statementDate"] = match.group(1)
             account_metadata["statementYear"] = int(match.group(2))
-            account_metadata["accountNumber"] = match.group(3)
+            # accountNumber extracted for import flow but not stored in metadata
+            account_number = match.group(3)
             print(f"Statement Date: {match.group(1)}")
-            print(f"Wallet Account: {match.group(3)}")
+            print(f"Wallet Account: {account_number}")
 
         current_year = account_metadata.get("statementYear", datetime.now().year)
         in_section = False
@@ -69,11 +91,13 @@ def parse(content: bytes) -> list[dict]:
                 except:
                     date_formatted = date_str
 
+                linkage = _detect_internal_transaction(description)
                 transaction = {
                     "date": date_formatted,
                     "description": description,
                     "amountIn": amount if tx_type == "CR" else None,
                     "amountOut": amount if tx_type == "DB" else None,
+                    "linkage": linkage,
                     "metadata": {
                         "source": "pdf",
                         "parserId": "dbs_paylah_statement",
@@ -82,7 +106,10 @@ def parse(content: bytes) -> list[dict]:
                         **account_metadata,
                     },
                 }
-                print(f"Found: {date_str} | {description} | {amount} {tx_type}")
+                if account_number:
+                    transaction["accountNumber"] = account_number
+                    transaction["accountIdentifier"] = account_number
+                print(f"Found: {date_str} | {description} | {amount} {tx_type}" + (f" | INTERNAL" if linkage else ""))
                 transactions.append(transaction)
 
         print(f"\nTotal transactions found: {len(transactions)}")

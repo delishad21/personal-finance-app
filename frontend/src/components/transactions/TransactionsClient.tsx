@@ -18,6 +18,8 @@ import { Select } from "@/components/ui/Select";
 import { TextInput } from "@/components/ui/TextInput";
 import { Button } from "@/components/ui/Button";
 import { DatePicker } from "@/components/ui/DatePicker";
+import { EditTransactionModal } from "@/components/transactions/EditTransactionModal";
+import { AddCategoryModal } from "@/components/ui/AddCategoryModal";
 import {
   bulkDeleteTransactionsByFilter,
   bulkDeleteTransactionsByIds,
@@ -94,6 +96,12 @@ export function TransactionsClient({
   const [bulkLoading, setBulkLoading] = useState(false);
   const [showBulkMenu, setShowBulkMenu] = useState(false);
   const bulkMenuRef = useRef<HTMLDivElement>(null);
+
+  // Edit modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
+  const [localCategories, setLocalCategories] = useState<Category[]>(categories);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -276,12 +284,91 @@ export function TransactionsClient({
   };
 
   const handleEdit = (transaction: Transaction) => {
-    // TODO: Implement edit modal
+    setEditingTransaction(transaction);
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async (updatedTransaction: Transaction) => {
+    try {
+      const response = await fetch(
+        `http://localhost:4001/api/transactions/${updatedTransaction.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            date: new Date(updatedTransaction.date).toISOString(),
+            description: updatedTransaction.description,
+            label: updatedTransaction.label,
+            categoryId: updatedTransaction.category?.id || null,
+            amountIn: updatedTransaction.amountIn,
+            amountOut: updatedTransaction.amountOut,
+            balance: updatedTransaction.balance,
+            accountIdentifier: updatedTransaction.accountIdentifier,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update transaction");
+      }
+
+      // Refresh transactions
+      await fetchTransactions(currentPage, filters);
+
+      setModalState({
+        isOpen: true,
+        type: "success",
+        title: "Success",
+        message: "Transaction updated successfully",
+      });
+    } catch (error) {
+      setModalState({
+        isOpen: true,
+        type: "error",
+        title: "Error",
+        message:
+          error instanceof Error ? error.message : "Failed to update transaction",
+      });
+      throw error;
+    }
+  };
+
+  const handleAddCategory = async (name: string, color: string) => {
+    try {
+      const response = await fetch("http://localhost:4001/api/categories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, color }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create category");
+      }
+
+      const newCategory = await response.json();
+      setLocalCategories([...localCategories, newCategory]);
+    } catch (error) {
+      console.error("Failed to create category:", error);
+      setModalState({
+        isOpen: true,
+        type: "error",
+        title: "Error",
+        message:
+          error instanceof Error ? error.message : "Failed to create category",
+      });
+    }
+  };
+
+  const handleAddAccountIdentifier = () => {
     setModalState({
       isOpen: true,
       type: "info",
-      title: "Edit Transaction",
-      message: "Edit functionality will be implemented soon.",
+      title: "Add Account",
+      message: "Account creation feature coming soon!",
     });
   };
 
@@ -721,6 +808,30 @@ export function TransactionsClient({
           </div>
         </>
       )}
+
+      {/* Edit Transaction Modal */}
+      {editingTransaction && (
+        <EditTransactionModal
+          isOpen={editModalOpen}
+          transaction={editingTransaction}
+          categories={localCategories}
+          accountIdentifiers={accountNumbers}
+          onClose={() => {
+            setEditModalOpen(false);
+            setEditingTransaction(null);
+          }}
+          onSave={handleSaveEdit}
+          onAddCategory={() => setIsAddCategoryModalOpen(true)}
+          onAddAccountIdentifier={handleAddAccountIdentifier}
+        />
+      )}
+
+      {/* Add Category Modal */}
+      <AddCategoryModal
+        isOpen={isAddCategoryModalOpen}
+        onClose={() => setIsAddCategoryModalOpen(false)}
+        onAdd={handleAddCategory}
+      />
 
       {/* Modal */}
       <Modal

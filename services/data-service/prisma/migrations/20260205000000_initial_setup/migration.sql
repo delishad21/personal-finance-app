@@ -66,6 +66,18 @@ CREATE TABLE "user_settings" (
 );
 
 -- CreateTable
+CREATE TABLE "account_numbers" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT NOT NULL,
+    "account_number" TEXT NOT NULL,
+    "color" TEXT NOT NULL DEFAULT '#6366f1',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "account_numbers_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "categories" (
     "id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
@@ -108,6 +120,7 @@ CREATE TABLE "transactions" (
     "account_number" TEXT,
     "source" TEXT,
     "metadata" JSONB,
+    "linkage" JSONB,
     "import_batch_id" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -151,6 +164,9 @@ CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 CREATE UNIQUE INDEX "user_settings_user_id_key" ON "user_settings"("user_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "account_numbers_user_id_account_number_key" ON "account_numbers"("user_id", "account_number");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "categories_user_id_name_key" ON "categories"("user_id", "name");
 
 -- CreateIndex
@@ -167,6 +183,9 @@ ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_fkey" FOREIGN KEY ("user
 
 -- AddForeignKey
 ALTER TABLE "user_settings" ADD CONSTRAINT "user_settings_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "account_numbers" ADD CONSTRAINT "account_numbers_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "categories" ADD CONSTRAINT "categories_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

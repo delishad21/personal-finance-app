@@ -5,6 +5,15 @@ import { z } from "zod";
 export const transactionRouter = Router();
 
 // Validation schemas
+const TransactionLinkageSchema = z.object({
+  type: z.enum(["internal", "reimbursement", "reimbursed"]),
+  reimburses: z.array(z.string()).optional(),
+  reimbursedBy: z.array(z.string()).optional(),
+  autoDetected: z.boolean().optional(),
+  detectionReason: z.string().optional(),
+  _pendingBatchIndices: z.array(z.number()).optional(),
+}).nullish();
+
 const ImportTransactionSchema = z.object({
   date: z.string().transform((str: string) => new Date(str)),
   description: z.string(),
@@ -16,6 +25,7 @@ const ImportTransactionSchema = z.object({
   accountIdentifier: z.string().nullish(),
   source: z.string().nullish(),
   metadata: z.any().optional(),
+  linkage: TransactionLinkageSchema,
 });
 
 const CheckImportSchema = z.object({
@@ -381,7 +391,7 @@ transactionRouter.post("/export", async (req: Request, res: Response) => {
             excludeIds,
           );
 
-    const rows = transactions.map((transaction) => ({
+    const rows = transactions.map((transaction: any) => ({
       date: transaction.date.toISOString().slice(0, 10),
       label: transaction.label ?? "",
       description: transaction.description ?? "",
@@ -407,6 +417,38 @@ transactionRouter.post("/export", async (req: Request, res: Response) => {
     res.status(400).json({ error: error.message });
   }
 });
+
+/**
+ * GET /api/transactions/search-reimbursement
+ * Search transactions for reimbursement linking
+ * NOTE: This must be before /:id routes to avoid route conflicts
+ */
+transactionRouter.get(
+  "/search-reimbursement",
+  async (req: Request, res: Response) => {
+    try {
+      const userId = req.query.userId as string;
+      const query = req.query.query as string;
+      const limit = req.query.limit
+        ? parseInt(req.query.limit as string)
+        : 20;
+
+      if (!userId || !query) {
+        return res.status(400).json({ error: "userId and query are required" });
+      }
+
+      const results = await TransactionService.searchForReimbursement(
+        userId,
+        query,
+        limit,
+      );
+
+      res.json(results);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
 
 /**
  * GET /api/transactions/:id
@@ -474,6 +516,110 @@ transactionRouter.delete("/:id", async (req: Request, res: Response) => {
     await TransactionService.deleteTransaction(id, userId);
 
     res.json({ success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/transactions/:id/mark-internal
+ * Mark transaction as internal
+ */
+transactionRouter.post(
+  "/:id/mark-internal",
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { userId, autoDetected, detectionReason } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+
+      const result = await TransactionService.markAsInternal(
+        id,
+        userId,
+        autoDetected || false,
+        detectionReason,
+      );
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * POST /api/transactions/:id/link-reimbursement
+ * Create reimbursement link
+ */
+transactionRouter.post(
+  "/:id/link-reimbursement",
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { userId, reimbursedIds } = req.body;
+
+      if (!userId || !reimbursedIds || !Array.isArray(reimbursedIds)) {
+        return res
+          .status(400)
+          .json({ error: "userId and reimbursedIds array are required" });
+      }
+
+      const result = await TransactionService.createReimbursementLink(
+        id,
+        reimbursedIds,
+        userId,
+      );
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * DELETE /api/transactions/:id/linkage
+ * Clear linkage from transaction
+ */
+transactionRouter.delete(
+  "/:id/linkage",
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = req.query.userId as string;
+
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+
+      const result = await TransactionService.clearLinkage(id, userId);
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * GET /api/transactions/:id/linked
+ * Get linked transactions for display
+ */
+transactionRouter.get("/:id/linked", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.query.userId as string;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const linked = await TransactionService.getLinkedTransactions(id, userId);
+
+    res.json(linked);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

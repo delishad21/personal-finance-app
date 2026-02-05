@@ -54,6 +54,10 @@ export function TransactionFilters({
           color: "var(--color-gray-5)",
         },
       ];
+  const filteredCategories = normalizedCategories.filter((category) => {
+    const lower = category.name.toLowerCase();
+    return lower !== "internal" && lower !== "reimbursement";
+  });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const advancedRef = useRef<HTMLDivElement>(null);
@@ -184,7 +188,7 @@ export function TransactionFilters({
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <div className="flex -space-x-1">
                     {filters.categoryIds.slice(0, 3).map((id) => {
-                      const cat = normalizedCategories.find((c) => c.id === id);
+                      const cat = filteredCategories.find((c) => c.id === id);
                       if (!cat) return null;
                       return (
                         <span
@@ -216,9 +220,9 @@ export function TransactionFilters({
                 >
                   All Categories
                 </button>
-                {normalizedCategories.map((category) => {
-                  const isChecked = filters.categoryIds.includes(category.id);
-                  return (
+                    {filteredCategories.map((category) => {
+                      const isChecked = filters.categoryIds.includes(category.id);
+                      return (
                     <button
                       key={category.id}
                       type="button"

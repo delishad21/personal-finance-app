@@ -156,6 +156,7 @@ model Transaction {
   accountIdentifier String?      @map("account_number") // Account identifier from statement
   source          String?      // bank name or source
   metadata        Json?        // extra fields from parsing
+  linkage         Json?        // Transaction linkage data for internal/reimbursement
   importBatchId   String?      @map("import_batch_id")
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")

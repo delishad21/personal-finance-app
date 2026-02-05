@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, Fragment } from "react";
+import { useState, Fragment, useRef, useCallback, useEffect } from "react";
+import type { KeyboardEvent, FormEvent } from "react";
 import {
   ArrowLeft,
   ArrowLeftToLine,
@@ -25,6 +26,8 @@ export function TransactionTable({
   categories,
   accountIdentifier,
   accountColor,
+  accountIdentifiers,
+  isNewAccount = false,
   duplicates,
   selectedIndices,
   nonDuplicateIndices = new Set(),
@@ -34,6 +37,7 @@ export function TransactionTable({
   onUpdateTransaction,
   onAccountIdentifierChange,
   onAccountColorChange,
+  onAddAccountIdentifier,
   onImport,
   onConfirmImport,
   onSelectAll,
@@ -41,11 +45,41 @@ export function TransactionTable({
   onToggleSelection,
   onAddCategoryClick,
   onBack,
+  onLinkageChange,
+  onOpenReimbursementSelector,
 }: TransactionTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const tableContainerRef = useRef<HTMLDivElement>(null);
   const { columnWidths, handleResizeStart } = useColumnResize(
     DEFAULT_COLUMN_WIDTHS,
   );
+  const internalCategory = categories.find(
+    (category) => category.name === "Internal",
+  );
+  const reimbursementCategory = categories.find(
+    (category) => category.name === "Reimbursement",
+  );
+  const displayCategories = [
+    ...categories,
+    ...(internalCategory
+      ? []
+      : [
+          {
+            id: "__internal__",
+            name: "Internal",
+            color: "#9ca3af",
+          },
+        ]),
+    ...(reimbursementCategory
+      ? []
+      : [
+          {
+            id: "__reimbursement__",
+            name: "Reimbursement",
+            color: "#22c55e",
+          },
+        ]),
+  ];
 
   const toggleRowExpanded = (index: number) => {
     const newExpanded = new Set(expandedRows);
@@ -67,12 +101,74 @@ export function TransactionTable({
     });
   };
 
+  const autoResizeTextarea = useCallback(
+    (event: FormEvent<HTMLTextAreaElement>) => {
+      const el = event.currentTarget;
+      el.style.height = "0px";
+      el.style.height = `${el.scrollHeight}px`;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+    const resizeAll = () => {
+      const textareas = container.querySelectorAll<HTMLTextAreaElement>(
+        'textarea[data-col="description"]',
+      );
+      textareas.forEach((el) => {
+        el.style.height = "0px";
+        el.style.height = `${el.scrollHeight}px`;
+      });
+    };
+    const raf = requestAnimationFrame(resizeAll);
+    return () => cancelAnimationFrame(raf);
+  }, [transactions, showDuplicatesOnly]);
+
+  const visibleRows = transactions
+    .map((transaction, index) => ({ transaction, index }))
+    .filter(({ index }) => (showDuplicatesOnly ? duplicates?.has(index) : true));
+
+  const handleTableKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Tab") return;
+    const target = event.target as HTMLElement;
+    const rowAttr = target.getAttribute("data-row");
+    const colAttr = target.getAttribute("data-col");
+    if (!rowAttr || !colAttr) return;
+
+    event.preventDefault();
+    const currentRow = Number(rowAttr);
+    const direction = event.shiftKey ? -1 : 1;
+
+    let nextRow = currentRow + direction;
+    while (nextRow >= 0 && nextRow < visibleRows.length) {
+      const nextEl = tableContainerRef.current?.querySelector<HTMLElement>(
+        `[data-row="${nextRow}"][data-col="${colAttr}"]`,
+      );
+      if (nextEl) {
+        const isDisabled =
+          nextEl instanceof HTMLInputElement ||
+          nextEl instanceof HTMLButtonElement
+            ? nextEl.disabled
+            : nextEl.getAttribute("aria-disabled") === "true";
+        if (!isDisabled) {
+          nextEl.focus();
+          break;
+        }
+      }
+      nextRow += direction;
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       <TransactionTableToolbar
         parsedData={parsedData}
         accountIdentifier={accountIdentifier}
         accountColor={accountColor}
+        accountIdentifiers={accountIdentifiers}
+        isNewAccount={isNewAccount}
         selectedCount={selectedIndices?.size || 0}
         totalCount={transactions.length}
         duplicateCount={duplicates?.size || 0}
@@ -84,6 +180,7 @@ export function TransactionTable({
         onConfirmImport={onConfirmImport}
         onAccountIdentifierChange={onAccountIdentifierChange}
         onAccountColorChange={onAccountColorChange}
+        onAddAccountIdentifier={onAddAccountIdentifier}
       />
 
       {showDuplicatesOnly && duplicates && duplicates.size > 0 && (
@@ -94,7 +191,11 @@ export function TransactionTable({
       )}
 
       {/* Table */}
-      <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-dark-2 rounded-lg border border-stroke dark:border-dark-3">
+      <div
+        ref={tableContainerRef}
+        onKeyDown={handleTableKeyDown}
+        className="flex-1 min-h-0 overflow-auto bg-white dark:bg-dark-2 rounded-lg border border-stroke dark:border-dark-3"
+      >
         <table
           className="w-full border-collapse"
           style={{ tableLayout: "fixed" }}
@@ -192,15 +293,22 @@ export function TransactionTable({
             </tr>
           </thead>
           <tbody>
-            {transactions
-              .map((transaction, index) => ({ transaction, index }))
-              .filter(({ index }) =>
-                showDuplicatesOnly ? duplicates?.has(index) : true,
-              )
-              .map(({ transaction, index }) => {
+            {visibleRows.map(({ transaction, index }, visibleIndex) => {
                 const rowDuplicates = duplicates?.get(index);
                 const hasDuplicates = rowDuplicates && rowDuplicates.length > 0;
                 const isSelected = selectedIndices?.has(index);
+
+                const internalCategoryId =
+                  internalCategory?.id ?? "__internal__";
+                const reimbursementCategoryId =
+                  reimbursementCategory?.id ?? "__reimbursement__";
+                const linkageType = transaction.linkage?.type;
+                const displayCategoryId =
+                  linkageType === "internal"
+                    ? internalCategoryId
+                    : linkageType === "reimbursement"
+                      ? reimbursementCategoryId
+                      : transaction.categoryId;
 
                 return (
                   <Fragment key={`transaction-${index}`}>
@@ -241,23 +349,31 @@ export function TransactionTable({
                       </td>
 
                       <td
-                        className="py-0 px-0"
+                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
                         style={{ width: columnWidths.date }}
                       >
-                        <DatePicker
-                          value={transaction.date}
-                          onChange={(date) =>
-                            onUpdateTransaction(index, "date", date)
-                          }
-                          disabled={showDuplicatesOnly}
-                        />
+                        <div className="w-full h-full min-h-[44px] flex items-stretch">
+                          <DatePicker
+                            value={transaction.date}
+                            onChange={(date) =>
+                              onUpdateTransaction(index, "date", date)
+                            }
+                            disabled={showDuplicatesOnly}
+                            triggerProps={{
+                              "data-row": `${visibleIndex}`,
+                              "data-col": "date",
+                              className:
+                                "py-2 min-h-[44px] items-center hover:bg-transparent dark:hover:bg-transparent",
+                            }}
+                          />
+                        </div>
                       </td>
 
                       <td
-                        className="py-0 px-0"
+                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
                         style={{ width: columnWidths.label }}
                       >
-                        <div className="flex items-center h-full">
+                        <div className="w-full flex items-stretch h-full min-h-[44px]">
                           <input
                             type="text"
                             value={transaction.label || ""}
@@ -270,16 +386,18 @@ export function TransactionTable({
                             }
                             placeholder="Add label..."
                             disabled={showDuplicatesOnly}
-                            className="flex-1 h-full px-3 py-3 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
+                            data-row={`${visibleIndex}`}
+                            data-col="label"
+                            className="flex-1 h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 disabled:cursor-not-allowed"
                           />
                           {!showDuplicatesOnly && (
                             <button
                               onClick={() =>
                                 handleCopyDescriptionToLabel(index)
                               }
-                              className="p-2 opacity-0 group-hover:opacity-100 hover:bg-gray-2 dark:hover:bg-dark-3 rounded transition-opacity"
-                              title="Copy description to label"
-                            >
+                            className="p-2 opacity-0 group-hover:opacity-100 hover:bg-gray-2 dark:hover:bg-dark-3 rounded transition-opacity self-center"
+                            title="Copy description to label"
+                          >
                               <ArrowLeft className="h-3.5 w-3.5 text-dark-5 dark:text-dark-6" />
                             </button>
                           )}
@@ -287,11 +405,11 @@ export function TransactionTable({
                       </td>
 
                       <td
-                        className="py-0 px-0"
+                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
                         style={{ width: columnWidths.description }}
                       >
-                        <input
-                          type="text"
+                        <div className="w-full h-full min-h-[44px] flex items-stretch">
+                          <textarea
                           value={transaction.description}
                           onChange={(e) =>
                             onUpdateTransaction(
@@ -300,68 +418,98 @@ export function TransactionTable({
                               e.target.value,
                             )
                           }
+                          onInput={autoResizeTextarea}
                           disabled={showDuplicatesOnly}
-                          className="w-full h-full px-3 py-3 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
+                          rows={1}
+                          data-row={`${visibleIndex}`}
+                          data-col="description"
+                          className="w-full h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 resize-none disabled:cursor-not-allowed"
                         />
+                        </div>
                       </td>
 
                       <td
-                        className="py-0 px-0"
+                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
                         style={{ width: columnWidths.category }}
                       >
-                        <CategorySelect
-                          value={transaction.categoryId}
-                          categories={categories}
-                          onChange={(categoryId) =>
-                            onUpdateTransaction(index, "categoryId", categoryId)
-                          }
-                          onAddClick={onAddCategoryClick}
-                          disabled={showDuplicatesOnly}
-                        />
+                        <div className="w-full h-full min-h-[44px] flex items-stretch">
+                          <CategorySelect
+                            value={displayCategoryId}
+                            categories={displayCategories}
+                            onChange={(categoryId) =>
+                              onUpdateTransaction(
+                                index,
+                                "categoryId",
+                                categoryId,
+                              )
+                            }
+                            onAddClick={onAddCategoryClick}
+                            variant="borderless"
+                            excludeReserved={!transaction.linkage}
+                            dropdownPlacement="inline"
+                            disabled={showDuplicatesOnly || !!transaction.linkage}
+                            lockedByLinkage={!!transaction.linkage}
+                            showOpenRing={false}
+                            triggerProps={{
+                              "data-row": `${visibleIndex}`,
+                              "data-col": "category",
+                              className:
+                                "py-2 min-h-[44px] items-center hover:bg-transparent dark:hover:bg-transparent",
+                            }}
+                          />
+                        </div>
                       </td>
 
                       <td
-                        className="py-0 px-0"
+                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
                         style={{ width: columnWidths.amountIn }}
                       >
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={transaction.amountIn || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            onUpdateTransaction(
-                              index,
-                              "amountIn",
-                              val ? parseFloat(val) || 0 : undefined,
-                            );
-                          }}
-                          placeholder="-"
-                          disabled={showDuplicatesOnly}
-                          className="w-full h-full px-3 py-3 text-sm border-0 bg-transparent text-green font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
-                        />
+                        <div className="w-full h-full min-h-[44px] flex items-stretch">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={transaction.amountIn || ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              onUpdateTransaction(
+                                index,
+                                "amountIn",
+                                val ? parseFloat(val) || 0 : undefined,
+                              );
+                            }}
+                            placeholder="-"
+                            disabled={showDuplicatesOnly}
+                            data-row={`${visibleIndex}`}
+                            data-col="amountIn"
+                            className="w-full h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-green font-medium outline-none focus:ring-0 disabled:cursor-not-allowed"
+                          />
+                        </div>
                       </td>
 
                       <td
-                        className="py-0 px-0"
+                        className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
                         style={{ width: columnWidths.amountOut }}
                       >
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={transaction.amountOut || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            onUpdateTransaction(
-                              index,
-                              "amountOut",
-                              val ? parseFloat(val) || 0 : undefined,
-                            );
-                          }}
-                          placeholder="-"
-                          disabled={showDuplicatesOnly}
-                          className="w-full h-full px-3 py-3 text-sm border-0 bg-transparent text-red font-medium outline-none focus:ring-2 focus:ring-inset focus:ring-primary disabled:cursor-not-allowed"
-                        />
+                        <div className="w-full h-full min-h-[44px] flex items-stretch">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={transaction.amountOut || ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              onUpdateTransaction(
+                                index,
+                                "amountOut",
+                                val ? parseFloat(val) || 0 : undefined,
+                              );
+                            }}
+                            placeholder="-"
+                            disabled={showDuplicatesOnly}
+                            data-row={`${visibleIndex}`}
+                            data-col="amountOut"
+                            className="w-full h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-red font-medium outline-none focus:ring-0 disabled:cursor-not-allowed"
+                          />
+                        </div>
                       </td>
                     </tr>
 
@@ -369,6 +517,23 @@ export function TransactionTable({
                       <TransactionRowExpanded
                         transaction={transaction}
                         colSpan={8}
+                        linkage={transaction.linkage || null}
+                        showOptions={!showDuplicatesOnly && !!onLinkageChange}
+                        disabled={isImporting}
+                        linkedCount={
+                          (transaction.linkage?._pendingBatchIndices?.length ||
+                            0) + (transaction.linkage?.reimburses?.length || 0)
+                        }
+                        onLinkageChange={
+                          onLinkageChange
+                            ? (linkage) => onLinkageChange(index, linkage)
+                            : undefined
+                        }
+                        onSelectReimbursement={
+                          onOpenReimbursementSelector
+                            ? () => onOpenReimbursementSelector(index)
+                            : undefined
+                        }
                       />
                     )}
 

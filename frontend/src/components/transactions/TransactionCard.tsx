@@ -1,8 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Pencil, Trash2, ArrowLeftRight, Receipt, Link2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/Checkbox";
+
+interface TransactionLinkage {
+  type: "internal" | "reimbursement" | "reimbursed";
+  reimburses?: string[];
+  reimbursedBy?: string[];
+  autoDetected?: boolean;
+  detectionReason?: string;
+}
+
+interface LinkedTransaction {
+  id: string;
+  date: string;
+  description: string;
+  amountIn: number | null;
+  amountOut: number | null;
+}
 
 interface Transaction {
   id: string;
@@ -12,12 +28,14 @@ interface Transaction {
   amountIn: number | null;
   amountOut: number | null;
   balance: number | null;
+  accountIdentifier?: string | null;
   category?: {
     id: string;
     name: string;
     color: string;
   };
   metadata?: Record<string, any>;
+  linkage?: TransactionLinkage | null;
 }
 
 interface TransactionCardProps {
@@ -27,6 +45,10 @@ interface TransactionCardProps {
   onDelete?: (id: string) => void;
   selected?: boolean;
   onToggleSelect?: () => void;
+  linkedTransactions?: {
+    reimburses: LinkedTransaction[];
+    reimbursedBy: LinkedTransaction[];
+  };
 }
 
 export function TransactionCard({
@@ -36,8 +58,14 @@ export function TransactionCard({
   onDelete,
   selected = false,
   onToggleSelect,
+  linkedTransactions,
 }: TransactionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  const linkageType = transaction.linkage?.type;
+  const isInternal = linkageType === "internal";
+  const isReimbursement = linkageType === "reimbursement";
+  const isReimbursed = linkageType === "reimbursed";
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -59,21 +87,28 @@ export function TransactionCard({
   const amount = transaction.amountIn ?? transaction.amountOut ?? 0;
   const isIncome = transaction.amountIn !== null;
 
+  // Determine left border color based on linkage type
+  const getLeftBorderColor = () => {
+    if (isReimbursement) return "#22c55e"; // bright green for reimbursement
+    if (isInternal) return "#9ca3af"; // gray for internal
+    return accountColor;
+  };
+
   return (
     <div
       className={`bg-white dark:bg-dark-2 transition-colors border ${
         isExpanded || selected ? "border-primary" : "border-transparent"
-      }`}
+      } ${isInternal ? "opacity-70" : ""}`}
     >
       {/* Main Content */}
       <div
         onClick={() => setIsExpanded((prev) => !prev)}
         className="relative p-4 pl-6 cursor-pointer hover:bg-gray-1 dark:hover:bg-dark-3/50"
       >
-        {accountColor && (
+        {(accountColor || isReimbursement || isInternal) && (
           <span
             className="absolute left-0 top-0 h-full w-1"
-            style={{ backgroundColor: accountColor }}
+            style={{ backgroundColor: getLeftBorderColor() }}
           />
         )}
         <div className="flex items-start justify-between gap-4">
@@ -108,15 +143,43 @@ export function TransactionCard({
 
           {/* Right: Amount & Actions */}
           <div className="flex items-center gap-3">
-            <div
-              className={`text-lg font-semibold ${
-                isIncome
-                  ? "text-green dark:text-green-light"
-                  : "text-red dark:text-red-light"
-              }`}
-            >
-              {isIncome ? "+" : "-"}
-              {formatAmount(Math.abs(amount))}
+            <div className="flex flex-col items-end">
+              {/* Linkage badge */}
+              {linkageType && (
+                <div className="flex items-center gap-1 mb-1">
+                  {isInternal && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-gray-2 dark:bg-dark-3 text-dark-5 dark:text-dark-6">
+                      <ArrowLeftRight className="w-3 h-3" />
+                      Internal
+                    </span>
+                  )}
+                  {isReimbursement && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green/10 text-green dark:text-green-light">
+                      <Receipt className="w-3 h-3" />
+                      Reimbursement
+                    </span>
+                  )}
+                  {isReimbursed && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-green/10 text-green dark:text-green-light">
+                      <Link2 className="w-3 h-3" />
+                      Reimbursed
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* Amount display */}
+              <div
+                className={`text-lg font-semibold ${
+                  isInternal
+                    ? "text-dark-5 dark:text-dark-6 line-through"
+                    : isIncome
+                      ? "text-green dark:text-green-light"
+                      : "text-red dark:text-red-light"
+                }`}
+              >
+                {isIncome ? "+" : "-"}
+                {formatAmount(Math.abs(amount))}
+              </div>
             </div>
 
             <div className="flex items-center gap-1">
@@ -168,6 +231,13 @@ export function TransactionCard({
       >
         <div className="border-t border-stroke dark:border-dark-3 bg-gray-1 dark:bg-dark-3/50 p-4">
           <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <div className="text-dark-5 dark:text-dark-6">Date</div>
+              <div className="font-medium text-dark dark:text-white mt-0.5">
+                {formatDate(transaction.date)}
+              </div>
+            </div>
+
             <div>
               <div className="text-dark-5 dark:text-dark-6">Label</div>
               <div className="font-medium text-dark dark:text-white mt-0.5">
@@ -265,8 +335,88 @@ export function TransactionCard({
                   </div>
                 </div>
               )}
+
+            {/* Linked Transactions Section */}
+            {linkedTransactions && (linkedTransactions.reimburses.length > 0 || linkedTransactions.reimbursedBy.length > 0) && (
+              <div className="col-span-2 mt-2">
+                {/* Reimburses Section */}
+                {linkedTransactions.reimburses.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-dark-5 dark:text-dark-6 mb-2 flex items-center gap-2">
+                      <Receipt className="w-4 h-4 text-green" />
+                      <span>Reimburses ({linkedTransactions.reimburses.length})</span>
+                    </div>
+                    <div className="space-y-2">
+                      {linkedTransactions.reimburses.map((linked) => (
+                        <LinkedTransactionPreview
+                          key={linked.id}
+                          transaction={linked}
+                          formatDate={formatDate}
+                          formatAmount={formatAmount}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Reimbursed By Section */}
+                {linkedTransactions.reimbursedBy.length > 0 && (
+                  <div>
+                    <div className="text-dark-5 dark:text-dark-6 mb-2 flex items-center gap-2">
+                      <Link2 className="w-4 h-4 text-green" />
+                      <span>Reimbursed By ({linkedTransactions.reimbursedBy.length})</span>
+                    </div>
+                    <div className="space-y-2">
+                      {linkedTransactions.reimbursedBy.map((linked) => (
+                        <LinkedTransactionPreview
+                          key={linked.id}
+                          transaction={linked}
+                          formatDate={formatDate}
+                          formatAmount={formatAmount}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Helper component for displaying linked transactions
+function LinkedTransactionPreview({
+  transaction,
+  formatDate,
+  formatAmount,
+}: {
+  transaction: LinkedTransaction;
+  formatDate: (date: string) => string;
+  formatAmount: (amount: number | null) => string;
+}) {
+  const amount = transaction.amountIn ?? transaction.amountOut ?? 0;
+  const isIncome = transaction.amountIn !== null;
+
+  return (
+    <div className="flex items-center justify-between p-2 bg-white dark:bg-dark-2 rounded border border-stroke dark:border-dark-3">
+      <div className="flex-1 min-w-0">
+        <div className="text-xs text-dark-5 dark:text-dark-6">
+          {formatDate(transaction.date)}
+        </div>
+        <div className="text-sm text-dark dark:text-white truncate">
+          {transaction.description}
+        </div>
+      </div>
+      <div
+        className={`text-sm font-medium ml-3 ${
+          isIncome ? "text-green dark:text-green-light" : "text-red dark:text-red-light"
+        }`}
+      >
+        {isIncome ? "+" : "-"}
+        {formatAmount(Math.abs(amount))}
       </div>
     </div>
   );

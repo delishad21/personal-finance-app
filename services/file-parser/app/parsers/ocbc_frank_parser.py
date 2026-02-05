@@ -23,11 +23,13 @@ def parse(content: bytes) -> list[dict]:
 
         # Extract metadata
         account_metadata = {}
+        account_number = None
 
         match = re.search(r"Account No[.\s]+(\d+)", all_text, re.I)
         if match:
-            account_metadata["accountNumber"] = match.group(1)
-            print(f"Account Number: {match.group(1)}")
+            # accountNumber extracted for import flow but not stored in metadata
+            account_number = match.group(1)
+            print(f"Account Number: {account_number}")
 
         period_match = re.search(
             r"(\d{1,2}\s+\w+\s+(\d{4}))\s+TO\s+(\d{1,2}\s+\w+\s+\d{4})", all_text, re.I
@@ -70,6 +72,7 @@ def parse(content: bytes) -> list[dict]:
                 "deposit_x": deposit_x,
                 "balance_x": balance_x,
             },
+            account_number,
         )
 
 
@@ -78,6 +81,7 @@ def _parse_with_columns(
     account_metadata: dict,
     current_year: int,
     header_positions: dict,
+    account_number: str = None,
 ) -> list[dict]:
     """Parse OCBC statement using word positions to map amounts to columns."""
     transactions = []
@@ -116,7 +120,7 @@ def _parse_with_columns(
             if in_section and "BALANCE C/F" in line_text:
                 if pending_tx:
                     transactions.append(
-                        _finalize_transaction(pending_tx, account_metadata, current_year)
+                        _finalize_transaction(pending_tx, account_metadata, current_year, account_number)
                     )
                     pending_tx = None
                 in_section = False
@@ -138,7 +142,7 @@ def _parse_with_columns(
             if len(date_tokens) >= 2:
                 if pending_tx:
                     transactions.append(
-                        _finalize_transaction(pending_tx, account_metadata, current_year)
+                        _finalize_transaction(pending_tx, account_metadata, current_year, account_number)
                     )
                     pending_tx = None
 
@@ -205,7 +209,7 @@ def _parse_with_columns(
 
         if in_section and pending_tx:
             transactions.append(
-                _finalize_transaction(pending_tx, account_metadata, current_year)
+                _finalize_transaction(pending_tx, account_metadata, current_year, account_number)
             )
             pending_tx = None
 
@@ -217,6 +221,7 @@ def _finalize_transaction(
     pending_tx: dict,
     account_metadata: dict,
     current_year: int,
+    account_number: str = None,
 ) -> dict:
     """Convert pending OCBC transaction to final format without balance inference."""
     trans_date = pending_tx["trans_date"]
@@ -227,7 +232,7 @@ def _finalize_transaction(
     except:
         date_formatted = trans_date
 
-    return {
+    transaction = {
         "date": date_formatted,
         "description": pending_tx["description"].strip(),
         "amountOut": pending_tx.get("amountOut"),
@@ -240,3 +245,7 @@ def _finalize_transaction(
             **account_metadata,
         },
     }
+    if account_number:
+        transaction["accountNumber"] = account_number
+        transaction["accountIdentifier"] = account_number
+    return transaction

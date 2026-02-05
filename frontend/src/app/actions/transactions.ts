@@ -5,6 +5,15 @@ import { auth } from "@/lib/auth";
 const DATA_SERVICE_URL =
   process.env.DATA_SERVICE_URL || "http://localhost:4001";
 
+export interface TransactionLinkage {
+  type: "internal" | "reimbursement" | "reimbursed";
+  reimburses?: string[];
+  reimbursedBy?: string[];
+  autoDetected?: boolean;
+  detectionReason?: string;
+  _pendingBatchIndices?: number[];
+}
+
 export interface ImportTransaction {
   date: Date | string;
   description: string;
@@ -16,6 +25,7 @@ export interface ImportTransaction {
   accountIdentifier?: string;
   source?: string;
   metadata?: any;
+  linkage?: TransactionLinkage | null;
 }
 
 export interface DuplicateMatch {
@@ -430,4 +440,59 @@ export async function exportTransactionsCsv(
   }
 
   return response.text();
+}
+
+/**
+ * Search transactions for reimbursement linking
+ */
+export async function searchTransactionsForReimbursement(
+  query: string,
+  limit: number = 20,
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized");
+  }
+
+  const params = new URLSearchParams({
+    userId: session.user.id,
+    query,
+    limit: limit.toString(),
+  });
+
+  const response = await fetch(
+    `${DATA_SERVICE_URL}/api/transactions/search-reimbursement?${params}`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to search transactions");
+  }
+
+  return response.json();
+}
+
+/**
+ * Get linked transactions for a transaction
+ */
+export async function getLinkedTransactions(id: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized");
+  }
+
+  const params = new URLSearchParams({
+    userId: session.user.id,
+  });
+
+  const response = await fetch(
+    `${DATA_SERVICE_URL}/api/transactions/${id}/linked?${params}`,
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to get linked transactions");
+  }
+
+  return response.json();
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import type { HTMLAttributes } from "react";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 
 interface DatePickerProps {
@@ -8,6 +9,9 @@ interface DatePickerProps {
   onChange: (date: string) => void;
   className?: string;
   disabled?: boolean;
+  triggerProps?: HTMLAttributes<HTMLButtonElement> & {
+    [key: `data-${string}`]: string;
+  };
 }
 
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -31,6 +35,7 @@ export function DatePicker({
   onChange,
   className = "",
   disabled = false,
+  triggerProps,
 }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -158,14 +163,24 @@ export function DatePicker({
     return days;
   };
 
+  const { className: triggerClassNameProp, ...triggerRestProps } =
+    triggerProps || {};
+  const triggerClassName = [
+    "w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors disabled:cursor-not-allowed disabled:hover:bg-transparent",
+    triggerClassNameProp,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative w-full h-full ${className}`}>
       {/* Trigger Button */}
       <button
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className="w-full h-full flex items-center px-4 py-3 text-sm text-left bg-transparent text-dark dark:text-white outline-none cursor-pointer hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        {...triggerRestProps}
+        className={triggerClassName}
       >
         <Calendar className="h-4 w-4 text-dark-5 dark:text-dark-6 mr-3 shrink-0" />
         <span className="flex-1 font-medium">
