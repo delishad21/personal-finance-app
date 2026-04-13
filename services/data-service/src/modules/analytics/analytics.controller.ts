@@ -13,6 +13,23 @@ const toNumber = (value: any) => {
   return Number(value);
 };
 
+const getReimbursedAmount = (linkage: any) => {
+  if (!linkage || typeof linkage !== "object") return 0;
+  const allocations = Array.isArray(linkage.reimbursedByAllocations)
+    ? linkage.reimbursedByAllocations
+    : [];
+  return allocations.reduce(
+    (sum: number, item: any) => sum + Math.max(toNumber(item?.amount), 0),
+    0,
+  );
+};
+
+const getEffectiveOut = (tx: { amountOut: any; linkage?: any }) => {
+  const rawOut = Math.max(toNumber(tx.amountOut), 0);
+  const reimbursed = getReimbursedAmount(tx.linkage);
+  return Number(Math.max(rawOut - reimbursed, 0).toFixed(2));
+};
+
 const formatDayKey = (date: Date) => date.toISOString().slice(0, 10);
 
 const buildDailySeries = (start: Date, end: Date) => {
@@ -60,7 +77,7 @@ analyticsRouter.get("/dashboard", async (req: Request, res: Response) => {
     const totals = transactions.reduce(
       (acc, tx) => ({
         totalIn: acc.totalIn + toNumber(tx.amountIn),
-        totalOut: acc.totalOut + toNumber(tx.amountOut),
+        totalOut: acc.totalOut + getEffectiveOut(tx),
       }),
       { totalIn: 0, totalOut: 0 },
     );
@@ -80,7 +97,7 @@ analyticsRouter.get("/dashboard", async (req: Request, res: Response) => {
       const entry = seriesMap.get(dayKey);
       if (entry) {
         entry.in += toNumber(tx.amountIn);
-        entry.out += toNumber(tx.amountOut);
+        entry.out += getEffectiveOut(tx);
       }
 
       const categoryId = tx.categoryId || "uncategorized";
@@ -93,7 +110,7 @@ analyticsRouter.get("/dashboard", async (req: Request, res: Response) => {
         category,
         totalOut: 0,
       };
-      current.totalOut += toNumber(tx.amountOut);
+      current.totalOut += getEffectiveOut(tx);
       categoryMap.set(categoryId, current);
     });
 
@@ -154,7 +171,7 @@ analyticsRouter.get("/monthly", async (req: Request, res: Response) => {
     const totals = transactions.reduce(
       (acc, tx) => ({
         totalIn: acc.totalIn + toNumber(tx.amountIn),
-        totalOut: acc.totalOut + toNumber(tx.amountOut),
+        totalOut: acc.totalOut + getEffectiveOut(tx),
       }),
       { totalIn: 0, totalOut: 0 },
     );
@@ -174,7 +191,7 @@ analyticsRouter.get("/monthly", async (req: Request, res: Response) => {
       const entry = seriesMap.get(dayKey);
       if (entry) {
         entry.in += toNumber(tx.amountIn);
-        entry.out += toNumber(tx.amountOut);
+        entry.out += getEffectiveOut(tx);
       }
 
       const categoryId = tx.categoryId || "uncategorized";
@@ -189,7 +206,7 @@ analyticsRouter.get("/monthly", async (req: Request, res: Response) => {
         totalOut: 0,
       };
       current.totalIn += toNumber(tx.amountIn);
-      current.totalOut += toNumber(tx.amountOut);
+      current.totalOut += getEffectiveOut(tx);
       categoryMap.set(categoryId, current);
     });
 
@@ -220,7 +237,7 @@ analyticsRouter.get("/monthly", async (req: Request, res: Response) => {
         (tx) => tx.date >= monthStart && tx.date <= monthEnd,
       );
       const totalOut = monthTx.reduce(
-        (acc, tx) => acc + toNumber(tx.amountOut),
+        (acc, tx) => acc + getEffectiveOut(tx),
         0,
       );
       trendSeries.push({
@@ -243,7 +260,7 @@ analyticsRouter.get("/monthly", async (req: Request, res: Response) => {
         description: tx.description,
         label: tx.label,
         amountIn: toNumber(tx.amountIn),
-        amountOut: toNumber(tx.amountOut),
+        amountOut: getEffectiveOut(tx),
         category: tx.category
           ? { id: tx.category.id, name: tx.category.name, color: tx.category.color }
           : null,
@@ -315,6 +332,40 @@ analyticsRouter.get("/monthly-summary", async (req: Request, res: Response) => {
       totalOut: item._sum.amountOut?.toNumber() || 0,
     }));
 
+    // Replace raw totalOut with reimbursement-adjusted totalOut.
+    // Prisma groupBy can't derive JSON-based linkage allocations in SQL directly.
+    const monthlyTransactions = await prisma.transaction.findMany({
+      where: {
+        userId: userId as string,
+        date: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      select: {
+        categoryId: true,
+        amountOut: true,
+        amountIn: true,
+        linkage: true,
+      },
+    });
+
+    const adjustedByCategory = new Map<string | null, { totalIn: number; totalOut: number }>();
+    for (const tx of monthlyTransactions) {
+      const key = tx.categoryId ?? null;
+      const current = adjustedByCategory.get(key) || { totalIn: 0, totalOut: 0 };
+      current.totalIn += toNumber(tx.amountIn);
+      current.totalOut += getEffectiveOut(tx);
+      adjustedByCategory.set(key, current);
+    }
+
+    for (const item of breakdown) {
+      const key = item.category?.id ?? null;
+      const adjusted = adjustedByCategory.get(key) || { totalIn: 0, totalOut: 0 };
+      item.totalIn = adjusted.totalIn;
+      item.totalOut = adjusted.totalOut;
+    }
+
     // Calculate totals
     const totals = breakdown.reduce(
       (acc: any, item: any) => ({
@@ -376,7 +427,13 @@ analyticsRouter.get(
         },
       });
 
-      res.json({ transactions });
+      res.json({
+        transactions: transactions.map((tx) => ({
+          ...tx,
+          amountOut: getEffectiveOut(tx),
+          rawAmountOut: toNumber(tx.amountOut),
+        })),
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

@@ -7,11 +7,27 @@ export const transactionRouter = Router();
 // Validation schemas
 const TransactionLinkageSchema = z.object({
   type: z.enum(["internal", "reimbursement", "reimbursed"]),
-  reimburses: z.array(z.string()).optional(),
-  reimbursedBy: z.array(z.string()).optional(),
+  reimbursesAllocations: z
+    .array(
+      z.object({
+        transactionId: z.string().optional(),
+        pendingBatchIndex: z.number().optional(),
+        amount: z.number(),
+      }),
+    )
+    .optional(),
+  reimbursedByAllocations: z
+    .array(
+      z.object({
+        transactionId: z.string(),
+        amount: z.number(),
+      }),
+    )
+    .optional(),
+  leftoverAmount: z.number().optional(),
+  leftoverCategoryId: z.string().nullable().optional(),
   autoDetected: z.boolean().optional(),
   detectionReason: z.string().optional(),
-  _pendingBatchIndices: z.array(z.number()).optional(),
 }).nullish();
 
 const ImportTransactionSchema = z.object({
@@ -22,10 +38,24 @@ const ImportTransactionSchema = z.object({
   amountIn: z.number().nullish(),
   amountOut: z.number().nullish(),
   balance: z.number().nullish(),
+  currency: z.string().nullish(),
   accountIdentifier: z.string().nullish(),
   source: z.string().nullish(),
   metadata: z.any().optional(),
   linkage: TransactionLinkageSchema,
+});
+
+const ImportRuleSchema = z.object({
+  name: z.string().min(1),
+  parserId: z.string().nullable().optional(),
+  matchType: z.enum(["always", "description_contains"]).optional(),
+  matchValue: z.string().nullable().optional(),
+  caseSensitive: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  setLabel: z.string().nullable().optional(),
+  setCategoryName: z.string().nullable().optional(),
+  markInternal: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
 });
 
 const CheckImportSchema = z.object({
@@ -106,6 +136,14 @@ const parseUpdates = (updates: any) => {
   } else {
     delete next.date;
   }
+  if (typeof next.currency === "string") {
+    next.currency = next.currency.trim().toUpperCase();
+    if (!next.currency) {
+      delete next.currency;
+    }
+  } else if (next.currency === null) {
+    delete next.currency;
+  }
   return next;
 };
 
@@ -124,6 +162,13 @@ const toCsv = (rows: Array<Record<string, string>>) => {
     headers.map((key) => escapeCsv(row[key] ?? "")).join(","),
   );
   return [headerLine, ...dataLines].join("\n");
+};
+
+const formatCsvDate = (value: Date) => {
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  const year = value.getFullYear();
+  return `${month}/${day}/${year}`;
 };
 
 /**
@@ -165,6 +210,106 @@ transactionRouter.post(
       }
 
       res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * POST /api/transactions/import-rules/bootstrap
+ * Seed default import rules for a user (idempotent)
+ */
+transactionRouter.post(
+  "/import-rules/bootstrap",
+  async (req: Request, res: Response) => {
+    try {
+      const userId = String(req.body?.userId || "");
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      await TransactionService.bootstrapDefaultImportRules(userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * GET /api/transactions/import-rules
+ * Get import rules
+ */
+transactionRouter.get("/import-rules", async (req: Request, res: Response) => {
+  try {
+    const userId = String(req.query.userId || "");
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+    const rules = await TransactionService.getImportRules(userId);
+    res.json({ rules });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/transactions/import-rules
+ * Create import rule
+ */
+transactionRouter.post("/import-rules", async (req: Request, res: Response) => {
+  try {
+    const userId = String(req.body?.userId || "");
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+    const payload = ImportRuleSchema.parse(req.body?.rule || req.body);
+    const rule = await TransactionService.createImportRule(userId, payload);
+    res.json({ rule });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/transactions/import-rules/:id
+ * Update import rule
+ */
+transactionRouter.patch(
+  "/import-rules/:id",
+  async (req: Request, res: Response) => {
+    try {
+      const userId = String(req.body?.userId || "");
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      const payload = ImportRuleSchema.partial().parse(req.body?.rule || req.body);
+      const rule = await TransactionService.updateImportRule(
+        userId,
+        req.params.id,
+        payload,
+      );
+      res.json({ rule });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * DELETE /api/transactions/import-rules/:id
+ * Delete import rule
+ */
+transactionRouter.delete(
+  "/import-rules/:id",
+  async (req: Request, res: Response) => {
+    try {
+      const userId = String(req.query.userId || "");
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      await TransactionService.deleteImportRule(userId, req.params.id);
+      res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -392,18 +537,16 @@ transactionRouter.post("/export", async (req: Request, res: Response) => {
           );
 
     const rows = transactions.map((transaction: any) => ({
-      date: transaction.date.toISOString().slice(0, 10),
-      label: transaction.label ?? "",
-      description: transaction.description ?? "",
-      amountIn:
-        transaction.amountIn !== null ? String(transaction.amountIn) : "",
-      amountOut:
-        transaction.amountOut !== null ? String(transaction.amountOut) : "",
-      balance: transaction.balance !== null ? String(transaction.balance) : "",
-      categoryName: transaction.category?.name ?? "",
-      categoryColor: transaction.category?.color ?? "",
-      accountIdentifier: transaction.accountIdentifier ?? "",
-      source: transaction.source ?? "",
+      Date: formatCsvDate(transaction.date),
+      Description: transaction.description ?? "",
+      Label: transaction.label ?? "",
+      Category: transaction.category?.name ?? "",
+      Credit: transaction.amountIn !== null ? String(transaction.amountIn) : "",
+      Debit: transaction.amountOut !== null ? String(transaction.amountOut) : "",
+      Balance: transaction.balance !== null ? String(transaction.balance) : "",
+      Currency: transaction.currency ?? "",
+      "Account Identifier": transaction.accountIdentifier ?? "",
+      Source: transaction.source ?? "",
     }));
 
     const csv = toCsv(rows);
@@ -428,19 +571,23 @@ transactionRouter.get(
   async (req: Request, res: Response) => {
     try {
       const userId = req.query.userId as string;
-      const query = req.query.query as string;
+      const query = req.query.query ? String(req.query.query) : undefined;
       const limit = req.query.limit
         ? parseInt(req.query.limit as string)
         : 20;
+      const offset = req.query.offset
+        ? parseInt(req.query.offset as string)
+        : 0;
 
-      if (!userId || !query) {
-        return res.status(400).json({ error: "userId and query are required" });
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
       }
 
       const results = await TransactionService.searchForReimbursement(
         userId,
         query,
         limit,
+        offset,
       );
 
       res.json(results);
@@ -559,18 +706,31 @@ transactionRouter.post(
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { userId, reimbursedIds } = req.body;
+      const { userId, reimbursedAllocations, leftoverCategoryId } = req.body;
 
-      if (!userId || !reimbursedIds || !Array.isArray(reimbursedIds)) {
+      if (
+        !userId ||
+        !Array.isArray(reimbursedAllocations)
+      ) {
         return res
           .status(400)
-          .json({ error: "userId and reimbursedIds array are required" });
+          .json({
+            error: "userId and reimbursedAllocations are required",
+          });
       }
+
+      const normalizedAllocations = reimbursedAllocations
+        .map((item: any) => ({
+          transactionId: String(item.transactionId || ""),
+          amount: Number(item.amount || 0),
+        }))
+        .filter((item: any) => item.transactionId && item.amount > 0);
 
       const result = await TransactionService.createReimbursementLink(
         id,
-        reimbursedIds,
+        normalizedAllocations,
         userId,
+        leftoverCategoryId ?? null,
       );
 
       res.json(result);
@@ -598,6 +758,27 @@ transactionRouter.delete(
       const result = await TransactionService.clearLinkage(id, userId);
 
       res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * POST /api/transactions/repair-linkages
+ * Repair invalid linkage states (e.g. self-reimbursed transactions)
+ */
+transactionRouter.post(
+  "/repair-linkages",
+  async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+
+      const result = await TransactionService.repairInvalidLinkages(userId);
+      res.json({ success: true, ...result });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

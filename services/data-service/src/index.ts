@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { transactionRouter } from "./modules/transactions/transactions.controller";
 import { analyticsRouter } from "./modules/analytics/analytics.controller";
+import { tripsRouter } from "./modules/trips/trips.controller";
 
 const app = express();
 const PORT = process.env.PORT || 4001;
@@ -18,6 +19,7 @@ app.get("/health", (req, res) => {
 // Routes
 app.use("/api/transactions", transactionRouter);
 app.use("/api/analytics", analyticsRouter);
+app.use("/api/trips", tripsRouter);
 
 // Error handling
 app.use(

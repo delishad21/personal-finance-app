@@ -6,6 +6,186 @@ import {
 } from "../duplicates/duplicate-detector";
 
 export class TransactionRepository {
+  private static async attachTripFundingSummary<T extends { id: string }>(
+    userId: string,
+    transactions: T[],
+  ) {
+    if (transactions.length === 0) {
+      return transactions.map((tx) => ({ ...tx, tripFundings: [] }));
+    }
+
+    const ids = transactions.map((tx) => tx.id);
+    const rows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        transactionId: string;
+        tripId: string;
+        tripName: string;
+      }>
+    >`
+      SELECT
+        tf.id,
+        tf.bank_transaction_id AS "transactionId",
+        t.id AS "tripId",
+        t.name AS "tripName"
+      FROM trip_fundings tf
+      INNER JOIN trips t ON t.id = tf.trip_id
+      WHERE
+        tf.bank_transaction_id IN (${Prisma.join(ids)})
+        AND t.user_id = ${userId}
+    `;
+
+    const map = new Map<
+      string,
+      Array<{ id: string; trip: { id: string; name: string } }>
+    >();
+    rows.forEach((row) => {
+      const existing = map.get(row.transactionId) || [];
+      existing.push({
+        id: row.id,
+        trip: { id: row.tripId, name: row.tripName },
+      });
+      map.set(row.transactionId, existing);
+    });
+
+    return transactions.map((tx) => ({
+      ...tx,
+      tripFundings: map.get(tx.id) || [],
+    }));
+  }
+
+  private static async attachLinkedReimbursementSummary<
+    T extends { id: string; linkage?: unknown },
+  >(userId: string, transactions: T[]) {
+    if (transactions.length === 0) {
+      return transactions.map((tx) => ({
+        ...tx,
+        linkedTransactions: { reimburses: [], reimbursedBy: [] },
+      }));
+    }
+
+    const linkedIdSet = new Set<string>();
+    const allocationsByTransactionId = new Map<
+      string,
+      {
+        reimburses: Array<{ transactionId: string; amount: number }>;
+        reimbursedBy: Array<{ transactionId: string; amount: number }>;
+      }
+    >();
+
+    for (const tx of transactions) {
+      const linkage = (tx.linkage || null) as any;
+      const reimburses = Array.isArray(linkage?.reimbursesAllocations)
+        ? linkage.reimbursesAllocations
+        : [];
+      const reimbursedBy = Array.isArray(linkage?.reimbursedByAllocations)
+        ? linkage.reimbursedByAllocations
+        : [];
+
+      const mappedReimburses: Array<{ transactionId: string; amount: number }> =
+        reimburses
+        .filter(
+          (item: any) =>
+            typeof item?.transactionId === "string" &&
+            item.transactionId.length > 0 &&
+            item.transactionId !== tx.id,
+        )
+        .map((item: any) => ({
+          transactionId: item.transactionId as string,
+          amount: Number(item.amount || 0),
+        }));
+
+      const mappedReimbursedBy: Array<{ transactionId: string; amount: number }> =
+        reimbursedBy
+        .filter(
+          (item: any) =>
+            typeof item?.transactionId === "string" &&
+            item.transactionId.length > 0 &&
+            item.transactionId !== tx.id,
+        )
+        .map((item: any) => ({
+          transactionId: item.transactionId as string,
+          amount: Number(item.amount || 0),
+        }));
+
+      mappedReimburses.forEach((item) => linkedIdSet.add(item.transactionId));
+      mappedReimbursedBy.forEach((item) => linkedIdSet.add(item.transactionId));
+
+      allocationsByTransactionId.set(tx.id, {
+        reimburses: mappedReimburses,
+        reimbursedBy: mappedReimbursedBy,
+      });
+    }
+
+    if (linkedIdSet.size === 0) {
+      return transactions.map((tx) => ({
+        ...tx,
+        linkedTransactions: { reimburses: [], reimbursedBy: [] },
+      }));
+    }
+
+    const linkedTransactions = await prisma.transaction.findMany({
+      where: {
+        userId,
+        id: { in: Array.from(linkedIdSet) },
+      },
+      select: {
+        id: true,
+        date: true,
+        label: true,
+        description: true,
+        amountIn: true,
+        amountOut: true,
+      },
+    });
+
+    const linkedMap = new Map(linkedTransactions.map((row) => [row.id, row]));
+
+    return transactions.map((tx) => {
+      const allocations = allocationsByTransactionId.get(tx.id) || {
+        reimburses: [],
+        reimbursedBy: [],
+      };
+
+      const reimburses = allocations.reimburses
+        .map((item) => {
+          const linked = linkedMap.get(item.transactionId);
+          if (!linked) return null;
+          return {
+            id: linked.id,
+            date: linked.date,
+            label: linked.label,
+            description: linked.description,
+            amountIn: linked.amountIn,
+            amountOut: linked.amountOut,
+            reimbursementAmount: item.amount,
+          };
+        })
+        .filter(Boolean);
+
+      const reimbursedBy = allocations.reimbursedBy
+        .map((item) => {
+          const linked = linkedMap.get(item.transactionId);
+          if (!linked) return null;
+          return {
+            id: linked.id,
+            date: linked.date,
+            label: linked.label,
+            description: linked.description,
+            amountIn: linked.amountIn,
+            amountOut: linked.amountOut,
+            reimbursementAmount: item.amount,
+          };
+        })
+        .filter(Boolean);
+
+      return {
+        ...tx,
+        linkedTransactions: { reimburses, reimbursedBy },
+      };
+    });
+  }
+
   private static buildWhere(
     userId: string,
     filters?: {
@@ -108,6 +288,7 @@ export class TransactionRepository {
         amountIn: t.amountIn,
         amountOut: t.amountOut,
         balance: t.balance,
+        ...({ currency: t.currency || "SGD" } as any),
         accountIdentifier: t.accountIdentifier,
         source: t.source,
         metadata: t.metadata
@@ -135,6 +316,7 @@ export class TransactionRepository {
       dateOrder?: "asc" | "desc";
       minAmount?: number;
       maxAmount?: number;
+      accountIdentifier?: string;
       limit?: number;
       offset?: number;
     },
@@ -160,7 +342,16 @@ export class TransactionRepository {
       prisma.transaction.count({ where }),
     ]);
 
-    return { transactions, total };
+    const tripDecorated = await TransactionRepository.attachTripFundingSummary(
+      userId,
+      transactions,
+    );
+    const decoratedTransactions =
+      await TransactionRepository.attachLinkedReimbursementSummary(
+        userId,
+        tripDecorated,
+      );
+    return { transactions: decoratedTransactions, total };
   }
 
   static async findManyByIds(userId: string, ids: string[]) {
@@ -170,7 +361,7 @@ export class TransactionRepository {
       undefined,
       ids,
     );
-    return prisma.transaction.findMany({
+    const transactions = await prisma.transaction.findMany({
       where,
       include: {
         category: true,
@@ -178,6 +369,7 @@ export class TransactionRepository {
       },
       orderBy: { date: "desc" },
     });
+    return TransactionRepository.attachTripFundingSummary(userId, transactions);
   }
 
   static async findManyByFilter(
@@ -200,7 +392,7 @@ export class TransactionRepository {
       filters?.dateOrder === "asc"
         ? { date: "asc" as const }
         : { date: "desc" as const };
-    return prisma.transaction.findMany({
+    const transactions = await prisma.transaction.findMany({
       where,
       include: {
         category: true,
@@ -208,6 +400,7 @@ export class TransactionRepository {
       },
       orderBy,
     });
+    return TransactionRepository.attachTripFundingSummary(userId, transactions);
   }
 
   static async updateManyByIds(
@@ -230,6 +423,9 @@ export class TransactionRepository {
         ...(updates.amountIn !== undefined && { amountIn: updates.amountIn }),
         ...(updates.amountOut !== undefined && { amountOut: updates.amountOut }),
         ...(updates.balance !== undefined && { balance: updates.balance }),
+        ...(updates.currency !== undefined
+          ? ({ currency: updates.currency } as any)
+          : {}),
         ...(updates.date !== undefined && { date: updates.date }),
         ...(updates.accountIdentifier !== undefined && { accountIdentifier: updates.accountIdentifier }),
       },
@@ -261,6 +457,9 @@ export class TransactionRepository {
         ...(updates.amountIn !== undefined && { amountIn: updates.amountIn }),
         ...(updates.amountOut !== undefined && { amountOut: updates.amountOut }),
         ...(updates.balance !== undefined && { balance: updates.balance }),
+        ...(updates.currency !== undefined
+          ? ({ currency: updates.currency } as any)
+          : {}),
         ...(updates.date !== undefined && { date: updates.date }),
         ...(updates.accountIdentifier !== undefined && { accountIdentifier: updates.accountIdentifier }),
       },
@@ -304,13 +503,19 @@ export class TransactionRepository {
    * Get a single transaction by ID
    */
   static async findById(id: string, userId: string) {
-    return prisma.transaction.findFirst({
+    const transaction = await prisma.transaction.findFirst({
       where: { id, userId },
       include: {
         category: true,
         importBatch: true,
       },
     });
+    if (!transaction) return null;
+    const [decorated] = await TransactionRepository.attachTripFundingSummary(
+      userId,
+      [transaction],
+    );
+    return decorated;
   }
 
   /**
@@ -321,6 +526,13 @@ export class TransactionRepository {
     userId: string,
     data: Partial<ImportTransactionInput>,
   ) {
+    const linkageData =
+      data.linkage === undefined
+        ? undefined
+        : data.linkage === null
+          ? Prisma.DbNull
+          : (data.linkage as unknown as Prisma.InputJsonValue);
+
     return prisma.transaction.update({
       where: { id, userId },
       data: {
@@ -330,7 +542,12 @@ export class TransactionRepository {
         amountIn: data.amountIn,
         amountOut: data.amountOut,
         balance: data.balance,
+        ...(data.currency !== undefined
+          ? ({ currency: data.currency || undefined } as any)
+          : {}),
         date: data.date,
+        accountIdentifier: data.accountIdentifier,
+        linkage: linkageData,
       },
     });
   }
@@ -361,23 +578,51 @@ export class TransactionRepository {
    */
   static async searchForReimbursement(
     userId: string,
-    query: string,
+    query: string | undefined,
     limit: number = 20,
+    offset: number = 0,
   ) {
-    return prisma.transaction.findMany({
-      where: {
-        userId,
-        OR: [
-          { description: { contains: query, mode: "insensitive" } },
-          { label: { contains: query, mode: "insensitive" } },
-        ],
-      },
-      include: {
-        category: true,
-      },
-      take: limit,
-      orderBy: { date: "desc" },
-    });
+    const trimmed = query?.trim();
+    const where: Prisma.TransactionWhereInput = {
+      userId,
+      ...(trimmed
+        ? {
+            OR: [
+              { description: { contains: trimmed, mode: "insensitive" } },
+              { label: { contains: trimmed, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    };
+
+    const [transactions, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where,
+        select: {
+          id: true,
+          userId: true,
+          date: true,
+          description: true,
+          label: true,
+          categoryId: true,
+          amountIn: true,
+          amountOut: true,
+          balance: true,
+          accountIdentifier: true,
+          source: true,
+          currency: true,
+          metadata: true,
+          category: true,
+          linkage: true,
+        },
+        take: limit,
+        skip: offset,
+        orderBy: { date: "desc" },
+      }),
+      prisma.transaction.count({ where }),
+    ]);
+
+    return { transactions, total };
   }
 
   /**
