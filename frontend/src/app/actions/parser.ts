@@ -1,15 +1,29 @@
 "use server";
 
+import { auth } from "@/lib/auth";
+import { getCategories } from "@/app/actions/categories";
+import { getImportRules, bootstrapDefaultImportRules } from "@/app/actions/importRules";
+
 const PARSER_SERVICE_URL =
   process.env.PARSER_SERVICE_URL || "http://file-parser:4000";
 
+const TRIP_PARSER_IDS = new Set(["revolut_statement", "youtrip_statement"]);
+
 interface TransactionLinkage {
   type: "internal" | "reimbursement" | "reimbursed";
-  reimburses?: string[];
-  reimbursedBy?: string[];
+  reimbursesAllocations?: Array<{
+    transactionId?: string;
+    pendingBatchIndex?: number;
+    amount: number;
+  }>;
+  reimbursedByAllocations?: Array<{
+    transactionId: string;
+    amount: number;
+  }>;
+  leftoverAmount?: number;
+  leftoverCategoryId?: string | null;
   autoDetected?: boolean;
   detectionReason?: string;
-  _pendingBatchIndices?: number[];
 }
 
 interface ParseResult {
@@ -29,6 +43,24 @@ interface ParseResult {
     linkage?: TransactionLinkage | null;
   }>;
   count: number;
+}
+
+function ruleMatches(
+  rule: {
+    matchType: "always" | "description_contains";
+    matchValue?: string | null;
+    caseSensitive?: boolean;
+  },
+  description: string,
+) {
+  if (rule.matchType === "always") return true;
+  if (rule.matchType === "description_contains") {
+    const needle = (rule.matchValue || "").trim();
+    if (!needle) return false;
+    if (rule.caseSensitive) return description.includes(needle);
+    return description.toLowerCase().includes(needle.toLowerCase());
+  }
+  return false;
 }
 
 export async function parseFile(formData: FormData): Promise<ParseResult> {
@@ -56,6 +88,61 @@ export async function parseFile(formData: FormData): Promise<ParseResult> {
       throw new Error("Invalid response from parser service");
     }
 
+    const session = await auth();
+    const normalizedParserId = String(result.parserId || "")
+      .trim()
+      .toLowerCase();
+    const shouldApplyImportRules = !TRIP_PARSER_IDS.has(normalizedParserId);
+
+    if (session?.user?.id && shouldApplyImportRules) {
+      try {
+        await bootstrapDefaultImportRules();
+        const rules = await getImportRules();
+        const categories = await getCategories({ scope: "main" });
+        const categoryMap = new Map<string, string>(
+          categories.map((category) => [category.name.toLowerCase(), category.id]),
+        );
+
+        result.transactions = result.transactions.map((tx: any) => {
+          const next = { ...tx };
+          for (const rule of rules) {
+            if (!rule.enabled) continue;
+            const ruleParserId = rule.parserId?.trim();
+            if (ruleParserId && ruleParserId !== result.parserId) continue;
+            if (!ruleMatches(rule, next.description || "")) continue;
+
+            if (rule.markInternal && !next.linkage) {
+              next.linkage = {
+                type: "internal",
+                autoDetected: true,
+                detectionReason: `Matched import rule: ${rule.name}`,
+              };
+            }
+
+            if (rule.setLabel && (!next.label || !next.label.trim())) {
+              next.label = rule.setLabel;
+            }
+
+            if (
+              rule.setCategoryName &&
+              !next.categoryId &&
+              (!next.linkage || next.linkage.type === "reimbursed")
+            ) {
+              const categoryId = categoryMap.get(
+                rule.setCategoryName.toLowerCase(),
+              );
+              if (categoryId) {
+                next.categoryId = categoryId;
+              }
+            }
+          }
+          return next;
+        });
+      } catch (rulesError) {
+        console.error("Failed to apply import rules in parse stage:", rulesError);
+      }
+    }
+
     return result;
   } catch (error) {
     console.error("Parse file error:", error);
@@ -63,9 +150,10 @@ export async function parseFile(formData: FormData): Promise<ParseResult> {
   }
 }
 
-export async function getAvailableParsers() {
+export async function getAvailableParsers(mode?: "bank" | "trip") {
   try {
-    const response = await fetch(`${PARSER_SERVICE_URL}/parsers`);
+    const query = mode ? `?mode=${mode}` : "";
+    const response = await fetch(`${PARSER_SERVICE_URL}/parsers${query}`);
 
     if (!response.ok) {
       throw new Error("Failed to fetch parsers");

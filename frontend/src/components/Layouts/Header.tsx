@@ -1,27 +1,38 @@
 "use client";
 
-import { Menu, Bell, User } from "lucide-react";
+import { Menu, Bell, User, ArrowLeft } from "lucide-react";
 import { useSidebarContext } from "./sidebar-context";
 import { useThemeStore } from "@/lib/stores/themeStore";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useHeaderConfig } from "./header-context";
 
 interface HeaderProps {
   title?: string;
   subtitle?: string;
+  showBack?: boolean;
+  backHref?: string;
 }
 
 export function Header({
   title = "Dashboard",
   subtitle = "Personal Finance Management",
+  showBack = false,
+  backHref = "/dashboard",
 }: HeaderProps) {
   const { toggleSidebar, isMobile } = useSidebarContext();
   const { theme, toggleTheme } = useThemeStore();
   const { data: session } = useSession();
   const router = useRouter();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const { headerConfig } = useHeaderConfig();
+
+  const resolvedTitle = headerConfig?.title ?? title;
+  const resolvedSubtitle = headerConfig?.subtitle ?? subtitle;
+  const resolvedShowBack = headerConfig?.showBack ?? showBack;
+  const resolvedBackHref = headerConfig?.backHref ?? backHref;
 
   const handleLogout = async () => {
     await signOut({ redirect: false });
@@ -40,10 +51,26 @@ export function Header({
         </button>
 
         <div className="max-xl:hidden">
-          <h1 className="mb-0.5 text-heading-5 font-bold text-dark dark:text-white">
-            {title}
-          </h1>
-          <p className="font-medium text-dark-5 dark:text-dark-6">{subtitle}</p>
+          <div className="flex items-center gap-3">
+            {resolvedShowBack && (
+              <button
+                onClick={() => router.push(resolvedBackHref)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-stroke text-dark-5 hover:text-dark hover:border-primary dark:border-stroke-dark dark:text-dark-6 dark:hover:text-white dark:hover:border-primary"
+                aria-label="Go back"
+                title="Back"
+              >
+                <ArrowLeft className="size-4" />
+              </button>
+            )}
+            <div>
+              <h1 className="mb-0.5 text-heading-5 font-bold text-dark dark:text-white">
+                {resolvedTitle}
+              </h1>
+              <p className="font-medium text-dark-5 dark:text-dark-6">
+                {resolvedSubtitle}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 

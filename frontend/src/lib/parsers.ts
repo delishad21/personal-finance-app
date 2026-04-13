@@ -5,11 +5,15 @@ export interface ParserOption {
   description: string;
 }
 
-export async function getParserOptions(): Promise<ParserOption[]> {
+export type ParserMode = "bank" | "trip";
+
+export async function getParserOptions(
+  mode: ParserMode = "bank",
+): Promise<ParserOption[]> {
   try {
     const parserServiceUrl =
       process.env.PARSER_SERVICE_URL || "http://localhost:4000";
-    const response = await fetch(`${parserServiceUrl}/parsers`, {
+    const response = await fetch(`${parserServiceUrl}/parsers?mode=${mode}`, {
       cache: "no-store", // Always fetch fresh parser list
     });
 
@@ -19,7 +23,7 @@ export async function getParserOptions(): Promise<ParserOption[]> {
         response.statusText,
       );
       // Return fallback parsers if service is down
-      return getFallbackParsers();
+      return getFallbackParsers(mode);
     }
 
     const data = await response.json();
@@ -27,12 +31,12 @@ export async function getParserOptions(): Promise<ParserOption[]> {
   } catch (error) {
     console.error("Error fetching parser options:", error);
     // Return fallback parsers if service is unreachable
-    return getFallbackParsers();
+    return getFallbackParsers(mode);
   }
 }
 
-function getFallbackParsers(): ParserOption[] {
-  return [
+function getFallbackParsers(mode: ParserMode): ParserOption[] {
+  const bankParsers: ParserOption[] = [
     {
       id: "generic_csv",
       name: "Generic CSV",
@@ -58,4 +62,21 @@ function getFallbackParsers(): ParserOption[] {
       description: "Parser for OCBC FRANK account statements",
     },
   ];
+
+  const tripParsers: ParserOption[] = [
+    {
+      id: "revolut_statement",
+      name: "Revolut Statement",
+      fileType: "pdf/csv",
+      description: "Trip parser for Revolut statements (PDF, CSV, or merged PDF+CSV)",
+    },
+    {
+      id: "youtrip_statement",
+      name: "YouTrip Statement",
+      fileType: "pdf",
+      description: "Trip parser for YouTrip statements",
+    },
+  ];
+
+  return mode === "trip" ? tripParsers : bankParsers;
 }
