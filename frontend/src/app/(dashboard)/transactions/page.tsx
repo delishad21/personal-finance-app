@@ -13,6 +13,7 @@ interface Transaction {
   amountIn: number | null;
   amountOut: number | null;
   balance: number | null;
+  currency?: string | null;
   accountIdentifier?: string | null;
   category?: {
     id: string;
@@ -45,7 +46,7 @@ async function getInitialTransactions() {
 export default async function TransactionsPage() {
   const [categories, accountNumbers, initialData, availableYears] =
     await Promise.all([
-      getCategories(),
+      getCategories({ scope: "main" }),
       getAccountNumbers(),
       getInitialTransactions(),
       getTransactionYears(),

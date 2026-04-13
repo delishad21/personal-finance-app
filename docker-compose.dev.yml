@@ -63,6 +63,7 @@ services:
         condition: service_healthy
     networks:
       - finance-network
+    command: sh -c "npx prisma migrate deploy && npm run dev"
 
   # Next.js Frontend Application
   frontend:
@@ -99,7 +100,7 @@ services:
         condition: service_started
     networks:
       - finance-network
-    command: sh -c "npx prisma migrate deploy && npm run dev"
+    command: npm run dev
 
 volumes:
   postgres-data:

@@ -19,6 +19,7 @@ import { format, parseISO } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import { getMonthlyAnalytics } from "@/app/actions/analytics";
 
 type Category = { id: string; name: string; color: string };
 
@@ -115,10 +116,7 @@ export function AnalyticsClient({
   ) => {
     setLoading(true);
     try {
-      const response = await fetch(
-        `/api/analytics/monthly?year=${year}&month=${month}`,
-      );
-      const json = await response.json();
+      const json = await getMonthlyAnalytics(Number(year), Number(month));
       setData(json);
     } finally {
       setLoading(false);
@@ -243,7 +241,7 @@ export function AnalyticsClient({
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
+      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
         <Card className="min-h-[360px]">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Daily Cash Flow</CardTitle>

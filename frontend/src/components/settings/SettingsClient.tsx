@@ -10,10 +10,12 @@ import {
   Tags,
   WalletCards,
   Settings2,
+  WandSparkles,
 } from "lucide-react";
 import { ManageCategoriesModal } from "@/components/settings/ManageCategoriesModal";
 import { ManageAccountsModal } from "@/components/settings/ManageAccountsModal";
 import { ChangePasswordModal } from "@/components/settings/ChangePasswordModal";
+import { ManageImportRulesModal } from "@/components/settings/ManageImportRulesModal";
 import {
   updateUserProfile,
   changePassword,
@@ -25,29 +27,44 @@ import {
   deleteCategory,
   type Category,
 } from "@/app/actions/categories";
+import { TRIP_CATEGORY_DEFINITIONS } from "@/lib/tripCategories";
 import {
   updateAccountIdentifier,
   deleteAccountIdentifier,
   upsertAccountNumber,
   type AccountIdentifier,
 } from "@/app/actions/accountNumbers";
+import {
+  createImportRule,
+  updateImportRule,
+  deleteImportRule,
+  type ImportRule,
+} from "@/app/actions/importRules";
+import type { ParserOption } from "@/lib/parsers";
 
 interface SettingsClientProps {
   user: UserProfile | null;
   initialCategories: Category[];
   initialAccountIdentifiers: AccountIdentifier[];
+  initialImportRules: ImportRule[];
+  parserOptions: ParserOption[];
 }
 
 export function SettingsClient({
   user,
   initialCategories,
   initialAccountIdentifiers,
+  initialImportRules,
+  parserOptions,
 }: SettingsClientProps) {
+  const tripCategoryNames = TRIP_CATEGORY_DEFINITIONS.map((item) => item.name);
+
   const [profile, setProfile] = useState<UserProfile | null>(user);
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [accounts, setAccounts] = useState<AccountIdentifier[]>(
     initialAccountIdentifiers,
   );
+  const [importRules, setImportRules] = useState<ImportRule[]>(initialImportRules);
 
   const [passwordState, setPasswordState] = useState({
     current: "",
@@ -70,6 +87,7 @@ export function SettingsClient({
 
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [manageAccountsOpen, setManageAccountsOpen] = useState(false);
+  const [manageRulesOpen, setManageRulesOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [newCategory, setNewCategory] = useState({
     name: "",
@@ -152,6 +170,21 @@ export function SettingsClient({
   };
 
   const handleCategoryDelete = (categoryId: string) => {
+    const category = categories.find((item) => item.id === categoryId);
+    if (
+      category &&
+      tripCategoryNames.some(
+        (name) => name.toLowerCase() === category.name.toLowerCase(),
+      )
+    ) {
+      showModal(
+        "warning",
+        "Category Locked",
+        "Trip category names are fixed and cannot be deleted.",
+      );
+      return;
+    }
+
     showModal(
       "warning",
       "Delete Category",
@@ -235,6 +268,66 @@ export function SettingsClient({
     }
   };
 
+  const handleDeleteRule = async (ruleId: string) => {
+    if (ruleId.startsWith("temp-")) {
+      setImportRules((prev) => prev.filter((rule) => rule.id !== ruleId));
+      return;
+    }
+    showModal(
+      "warning",
+      "Delete Rule",
+      "This will remove the import rule.",
+      async () => {
+        try {
+          await deleteImportRule(ruleId);
+          setImportRules((prev) => prev.filter((rule) => rule.id !== ruleId));
+          showModal("success", "Rule Deleted", "Import rule removed.");
+        } catch (error) {
+          showModal(
+            "error",
+            "Delete Failed",
+            error instanceof Error ? error.message : "Failed to delete rule",
+          );
+        }
+      },
+    );
+  };
+
+  const handleSaveAllRules = async () => {
+    try {
+      const savedRules: ImportRule[] = [];
+      for (const rule of importRules) {
+        const payload = {
+          name: rule.name,
+          parserId: rule.parserId || null,
+          matchType: rule.matchType,
+          matchValue: rule.matchValue || null,
+          caseSensitive: rule.caseSensitive,
+          enabled: rule.enabled,
+          setLabel: rule.setLabel || null,
+          setCategoryName: rule.setCategoryName || null,
+          markInternal: rule.markInternal,
+          sortOrder: rule.sortOrder,
+        };
+        if (rule.id.startsWith("temp-")) {
+          const created = await createImportRule(payload);
+          savedRules.push(created);
+        } else {
+          const updated = await updateImportRule(rule.id, payload);
+          savedRules.push(updated);
+        }
+      }
+      setImportRules(savedRules);
+      showModal("success", "Rules Saved", "Import rules updated.");
+    } catch (error) {
+      showModal(
+        "error",
+        "Save Failed",
+        error instanceof Error ? error.message : "Failed to save import rules",
+      );
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -246,7 +339,7 @@ export function SettingsClient({
         </p>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <CardHeader className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -426,9 +519,46 @@ export function SettingsClient({
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/15 dark:bg-primary/25 text-primary flex items-center justify-center">
+                <WandSparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle>Import Rules</CardTitle>
+                <p className="text-sm text-dark-5 dark:text-dark-6 mt-1">
+                  Auto-label, auto-categorize, and auto-mark imports.
+                </p>
+              </div>
+            </div>
+            <Button variant="primary" size="sm" onClick={() => setManageRulesOpen(true)}>
+              Manage Rules
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2 text-sm text-dark-5 dark:text-dark-6">
+            {importRules.slice(0, 4).map((rule) => (
+              <span
+                key={rule.id}
+                className="inline-flex items-center gap-2 rounded-full border border-stroke dark:border-dark-3 px-3 py-1"
+              >
+                <span className="h-2 w-2 rounded-full bg-primary" />
+                {rule.name}
+              </span>
+            ))}
+            {importRules.length === 0 && <span>No import rules yet.</span>}
+            {importRules.length > 4 && <span>+{importRules.length - 4} more</span>}
+          </div>
+        </CardContent>
+      </Card>
+
       <ManageCategoriesModal
         isOpen={manageCategoriesOpen}
         categories={categories}
+        lockedCategoryNames={tripCategoryNames}
         newCategory={newCategory}
         onClose={() => setManageCategoriesOpen(false)}
         onNewCategoryChange={setNewCategory}
@@ -522,6 +652,39 @@ export function SettingsClient({
         onChange={setPasswordState}
         onClose={() => setPasswordModalOpen(false)}
         onSave={handlePasswordSave}
+      />
+
+      <ManageImportRulesModal
+        isOpen={manageRulesOpen}
+        rules={importRules}
+        categories={categories}
+        parserOptions={parserOptions}
+        onClose={() => setManageRulesOpen(false)}
+        onAddRule={() =>
+          setImportRules((prev) => [
+            ...prev,
+            {
+              id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              name: "New Rule",
+              parserId: null,
+              matchType: "description_contains",
+              matchValue: "",
+              caseSensitive: false,
+              enabled: true,
+              setLabel: null,
+              setCategoryName: null,
+              markInternal: false,
+              sortOrder: prev.length + 1,
+            },
+          ])
+        }
+        onRuleChange={(id, updates) =>
+          setImportRules((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, ...updates } : item)),
+          )
+        }
+        onDeleteRule={handleDeleteRule}
+        onSaveAll={handleSaveAllRules}
       />
 
       <Modal

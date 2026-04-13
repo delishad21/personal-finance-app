@@ -1,4 +1,5 @@
 import { ArrowLeftRight, Receipt, X } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Transaction, TransactionLinkage } from "./types";
 
@@ -9,6 +10,7 @@ interface TransactionRowExpandedProps {
   showOptions?: boolean;
   disabled?: boolean;
   linkedCount?: number;
+  renderExpandedActions?: () => ReactNode;
   onLinkageChange?: (linkage: TransactionLinkage | null) => void;
   onSelectReimbursement?: () => void;
 }
@@ -20,9 +22,12 @@ export function TransactionRowExpanded({
   showOptions = false,
   disabled = false,
   linkedCount = 0,
+  renderExpandedActions,
   onLinkageChange,
   onSelectReimbursement,
 }: TransactionRowExpandedProps) {
+  const canMarkReimbursement = (transaction.amountIn ?? 0) > 0;
+
   const handleMarkInternal = () => {
     if (!onLinkageChange) return;
     if (linkage?.type === "internal") {
@@ -87,7 +92,11 @@ export function TransactionRowExpanded({
                   }
                   size="sm"
                   onClick={handleMarkReimbursement}
-                  disabled={disabled || linkage?.type === "internal"}
+                  disabled={
+                    disabled ||
+                    linkage?.type === "internal" ||
+                    !canMarkReimbursement
+                  }
                   leftIcon={<Receipt className="w-4 h-4" />}
                   className={
                     linkage?.type === "reimbursement"
@@ -127,8 +136,16 @@ export function TransactionRowExpanded({
                   {linkedCount !== 1 ? "s" : ""}.
                 </p>
               )}
+
+              {!canMarkReimbursement && (
+                <p className="mt-2 text-xs text-dark-5 dark:text-dark-6">
+                  Reimbursement is available only for positive inflow transactions.
+                </p>
+              )}
             </div>
           )}
+
+          {renderExpandedActions && <div className="mb-4">{renderExpandedActions()}</div>}
 
           <div className="space-y-1">
             <div className="font-medium text-dark dark:text-white mb-2">
@@ -140,9 +157,11 @@ export function TransactionRowExpanded({
                   {key}:
                 </span>
                 <span className="break-all">
-                  {typeof value === "object"
-                    ? JSON.stringify(value)
-                    : String(value)}
+                  {value === null || value === undefined
+                    ? "-"
+                    : typeof value === "object"
+                      ? JSON.stringify(value)
+                      : String(value)}
                 </span>
               </div>
             ))}

@@ -2,6 +2,7 @@
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
+import { TRIP_CATEGORY_DEFINITIONS } from "@/lib/tripCategories";
 
 export interface Category {
   id: string;
@@ -9,16 +10,60 @@ export interface Category {
   color: string;
 }
 
-export async function getCategories(): Promise<Category[]> {
+const TRIP_CATEGORY_NAME_SET = new Set(
+  TRIP_CATEGORY_DEFINITIONS.map((item) => item.name.toLowerCase()),
+);
+
+const isTripCategoryName = (name: string) =>
+  TRIP_CATEGORY_NAME_SET.has(name.trim().toLowerCase());
+
+async function ensureTripCategories(userId: string): Promise<void> {
+  await Promise.all(
+    TRIP_CATEGORY_DEFINITIONS.map((item) =>
+      prisma.category.upsert({
+        where: {
+          userId_name: {
+            userId,
+            name: item.name,
+          },
+        },
+        update: {},
+        create: {
+          userId,
+          name: item.name,
+          color: item.color,
+          isDefault: true,
+          icon: "trip",
+        },
+      }),
+    ),
+  );
+}
+
+export async function getCategories(options?: {
+  scope?: "main" | "trips" | "settings";
+}): Promise<Category[]> {
   const session = await auth();
 
   if (!session?.user?.id) {
     return [];
   }
 
+  const scope = options?.scope || "main";
+  if (scope === "trips" || scope === "settings") {
+    await ensureTripCategories(session.user.id);
+  }
+
   const categories = await prisma.category.findMany({
     where: {
       userId: session.user.id,
+      ...(scope === "main"
+        ? {
+            NOT: TRIP_CATEGORY_DEFINITIONS.map((item) => ({
+              name: { equals: item.name, mode: "insensitive" as const },
+            })),
+          }
+        : {}),
     },
     select: {
       id: true,
@@ -41,6 +86,12 @@ export async function createCategory(
 
   if (!session?.user?.id) {
     throw new Error("Not authenticated");
+  }
+
+  if (isTripCategoryName(name)) {
+    throw new Error(
+      "Trip categories are system-defined. Edit their color in Settings instead.",
+    );
   }
 
   const category = await prisma.category.create({
@@ -78,6 +129,10 @@ export async function deleteCategory(categoryId: string): Promise<void> {
     throw new Error("Category not found or unauthorized");
   }
 
+  if (isTripCategoryName(category.name)) {
+    throw new Error("Trip categories cannot be deleted.");
+  }
+
   // Delete the category (transactions will have categoryId set to null due to onDelete: SetNull)
   await prisma.category.delete({
     where: {
@@ -109,12 +164,28 @@ export async function updateCategory(
     throw new Error("Category not found or unauthorized");
   }
 
+  const nextName = name.trim();
+  const existingIsTrip = isTripCategoryName(existingCategory.name);
+  const nextIsTrip = isTripCategoryName(nextName);
+
+  if (!nextName) {
+    throw new Error("Category name is required");
+  }
+
+  if (existingIsTrip && existingCategory.name !== nextName) {
+    throw new Error("Trip category names are fixed and cannot be changed.");
+  }
+
+  if (!existingIsTrip && nextIsTrip) {
+    throw new Error("Trip category names are reserved.");
+  }
+
   const category = await prisma.category.update({
     where: {
       id: categoryId,
     },
     data: {
-      name,
+      name: nextName,
       color,
     },
     select: {

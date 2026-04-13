@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, Filter, X, ChevronDown } from "lucide-react";
+import { Filter, X, ChevronDown } from "lucide-react";
 import { Select } from "@/components/ui/Select";
-import { TextInput } from "@/components/ui/TextInput";
+import { NumberInput } from "@/components/ui/NumberInput";
+import { SearchBar } from "@/components/ui/SearchBar";
 import { Button } from "@/components/ui/Button";
 import { DatePicker } from "@/components/ui/DatePicker";
 
@@ -54,10 +55,7 @@ export function TransactionFilters({
           color: "var(--color-gray-5)",
         },
       ];
-  const filteredCategories = normalizedCategories.filter((category) => {
-    const lower = category.name.toLowerCase();
-    return lower !== "internal" && lower !== "reimbursement";
-  });
+  const filteredCategories = normalizedCategories;
   const [showAdvanced, setShowAdvanced] = useState(false);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const advancedRef = useRef<HTMLDivElement>(null);
@@ -164,10 +162,9 @@ export function TransactionFilters({
           <label className="text-xs font-medium text-dark-5 dark:text-dark-6">
             Search
           </label>
-          <TextInput
-            leftIcon={<Search className="w-4 h-4" />}
+          <SearchBar
             value={filters.search}
-            onChange={(e) => updateFilter("search", e.target.value)}
+            onChange={(value) => updateFilter("search", value)}
             placeholder="Search transactions..."
             className="w-full mt-1"
             inputClassName="w-full bg-white dark:bg-dark-3"
@@ -419,8 +416,7 @@ export function TransactionFilters({
                     <label className="text-xs font-medium text-dark-5 dark:text-dark-6">
                       Min Amount
                     </label>
-                    <TextInput
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       placeholder="0.00"
                       value={filters.amountMin}
@@ -435,8 +431,7 @@ export function TransactionFilters({
                     <label className="text-xs font-medium text-dark-5 dark:text-dark-6">
                       Max Amount
                     </label>
-                    <TextInput
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       placeholder="0.00"
                       value={filters.amountMax}

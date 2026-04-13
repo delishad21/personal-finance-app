@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { TransactionCard } from "@/components/transactions/TransactionCard";
 import { TransactionFilters } from "@/components/transactions/TransactionFilters";
 import { Pagination } from "@/components/transactions/Pagination";
+import { ExpandableTransactionList } from "@/components/transactions/ExpandableTransactionList";
 import {
   Loader2,
   AlertCircle,
@@ -25,9 +25,12 @@ import {
   bulkDeleteTransactionsByIds,
   bulkUpdateTransactionsByFilter,
   bulkUpdateTransactionsByIds,
+  deleteTransaction,
   exportTransactionsCsv,
   getTransactions,
+  updateTransaction,
 } from "@/app/actions/transactions";
+import { createCategory } from "@/app/actions/categories";
 
 interface Transaction {
   id: string;
@@ -37,13 +40,52 @@ interface Transaction {
   amountIn: number | null;
   amountOut: number | null;
   balance: number | null;
+  currency?: string | null;
   accountIdentifier?: string | null;
   category?: {
     id: string;
     name: string;
     color: string;
   };
+  tripFundings?: Array<{
+    id: string;
+    trip: { id: string; name: string };
+  }>;
+  linkedTransactions?: {
+    reimburses: Array<{
+      id: string;
+      date: string;
+      label?: string | null;
+      description: string;
+      amountIn: number | null;
+      amountOut: number | null;
+      reimbursementAmount?: number | null;
+    }>;
+    reimbursedBy: Array<{
+      id: string;
+      date: string;
+      label?: string | null;
+      description: string;
+      amountIn: number | null;
+      amountOut: number | null;
+      reimbursementAmount?: number | null;
+    }>;
+  };
   metadata?: Record<string, any>;
+  linkage?: {
+    type: "internal" | "reimbursement" | "reimbursed";
+    reimbursesAllocations?: Array<{
+      transactionId?: string;
+      pendingBatchIndex?: number;
+      amount: number;
+    }>;
+    reimbursedByAllocations?: Array<{
+      transactionId: string;
+      amount: number;
+    }>;
+    autoDetected?: boolean;
+    detectionReason?: string;
+  } | null;
 }
 
 interface Category {
@@ -292,29 +334,17 @@ export function TransactionsClient({
 
   const handleSaveEdit = async (updatedTransaction: Transaction) => {
     try {
-      const response = await fetch(
-        `http://localhost:4001/api/transactions/${updatedTransaction.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            date: new Date(updatedTransaction.date).toISOString(),
-            description: updatedTransaction.description,
-            label: updatedTransaction.label,
-            categoryId: updatedTransaction.category?.id || null,
-            amountIn: updatedTransaction.amountIn,
-            amountOut: updatedTransaction.amountOut,
-            balance: updatedTransaction.balance,
-            accountIdentifier: updatedTransaction.accountIdentifier,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to update transaction");
-      }
+      await updateTransaction(updatedTransaction.id, {
+        date: new Date(updatedTransaction.date).toISOString(),
+        description: updatedTransaction.description,
+        label: updatedTransaction.label,
+        categoryId: updatedTransaction.category?.id || null,
+        amountIn: updatedTransaction.amountIn ?? undefined,
+        amountOut: updatedTransaction.amountOut ?? undefined,
+        balance: updatedTransaction.balance ?? undefined,
+        accountIdentifier: updatedTransaction.accountIdentifier ?? undefined,
+        linkage: updatedTransaction.linkage ?? null,
+      });
 
       // Refresh transactions
       await fetchTransactions(currentPage, filters);
@@ -341,19 +371,7 @@ export function TransactionsClient({
 
   const handleAddCategory = async (name: string, color: string) => {
     try {
-      const response = await fetch("http://localhost:4001/api/categories", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name, color }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to create category");
-      }
-
-      const newCategory = await response.json();
+      const newCategory = await createCategory(name, color);
       setLocalCategories([...localCategories, newCategory]);
     } catch (error) {
       console.error("Failed to create category:", error);
@@ -385,17 +403,7 @@ export function TransactionsClient({
         "Are you sure you want to delete this transaction? This action cannot be undone.",
       onConfirm: async () => {
         try {
-          const response = await fetch(
-            `http://localhost:4001/api/transactions/${id}`,
-            {
-              method: "DELETE",
-              credentials: "include",
-            },
-          );
-
-          if (!response.ok) {
-            throw new Error("Failed to delete transaction");
-          }
+          await deleteTransaction(id);
 
           // Refresh transactions
           setTransactions(transactions.filter((t) => t.id !== id));
@@ -577,42 +585,27 @@ export function TransactionsClient({
     }
   };
 
-  // Group transactions by date
-  const groupedTransactions = transactions.reduce(
-    (groups, transaction) => {
-      const date = new Date(transaction.date).toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      });
-
-      if (!groups[date]) {
-        groups[date] = [];
-      }
-      groups[date].push(transaction);
-      return groups;
-    },
-    {} as Record<string, Transaction[]>,
-  );
-
   return (
-    <div className="space-y-6">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
       {/* Filters */}
-      <TransactionFilters
-        categories={categories}
-        accountNumbers={accountNumbers}
-        availableYears={availableYears}
-        onFilterChange={handleFilterChange}
-        initialFilters={filters}
-      />
+      <div className="shrink-0">
+        <TransactionFilters
+          categories={categories}
+          accountNumbers={accountNumbers}
+          availableYears={availableYears}
+          onFilterChange={handleFilterChange}
+          initialFilters={filters}
+        />
+      </div>
 
       {/* Content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      ) : error ? (
-        <div className="bg-red-light-5 dark:bg-red/20 border border-red-light-3 dark:border-red-dark rounded-lg p-6 flex items-start gap-3">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {loading ? (
+          <div className="flex h-full items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : error ? (
+          <div className="bg-red-light-5 dark:bg-red/20 border border-red-light-3 dark:border-red-dark rounded-lg p-6 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red dark:text-red-light-1 shrink-0 mt-0.5" />
           <div>
             <h3 className="font-semibold text-red-dark dark:text-red-light-2">
@@ -622,9 +615,9 @@ export function TransactionsClient({
               {error}
             </p>
           </div>
-        </div>
-      ) : transactions.length === 0 ? (
-        <div className="bg-white dark:bg-dark-2 rounded-lg border border-stroke dark:border-dark-3 p-12 text-center">
+          </div>
+        ) : transactions.length === 0 ? (
+          <div className="bg-white dark:bg-dark-2 rounded-lg border border-stroke dark:border-dark-3 p-12 text-center">
           <Receipt className="w-16 h-16 text-dark-5 dark:text-dark-6 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-dark dark:text-white mb-2">
             No transactions found
@@ -637,9 +630,9 @@ export function TransactionsClient({
               ? "Try adjusting your filters to see more results."
               : "Import your first transaction to get started."}
           </p>
-        </div>
-      ) : (
-        <>
+          </div>
+        ) : (
+          <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
           {/* Pagination (Top) */}
           <Pagination
             currentPage={currentPage}
@@ -766,51 +759,36 @@ export function TransactionsClient({
             }
           />
 
-          {/* Transaction List */}
-          <div className="space-y-6">
-            {Object.entries(groupedTransactions).map(
-              ([date, dateTransactions]) => (
-                <div key={date}>
-                  {/* Date Header with line */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <h3 className="text-sm font-semibold text-dark dark:text-white whitespace-nowrap uppercase tracking-wide">
-                      {date}
-                    </h3>
-                    <div className="flex-1 h-px bg-stroke dark:bg-dark-3"></div>
-                  </div>
-
-                  {/* Connected transaction block */}
-                  <div className="overflow-hidden rounded-lg dark:border-dark-3">
-                    {dateTransactions.map((transaction, index) => (
-                      <div
-                        key={transaction.id}
-                        className={
-                          index < dateTransactions.length - 1
-                            ? "border-b border-stroke dark:border-dark-3"
-                            : ""
-                        }
-                      >
-                        <TransactionCard
-                          transaction={transaction}
-                          accountColor={
-                            transaction.accountIdentifier
-                              ? accountColorMap[transaction.accountIdentifier]
-                              : undefined
-                          }
-                          onEdit={handleEdit}
-                          onDelete={handleDelete}
-                          selected={isSelected(transaction.id)}
-                          onToggleSelect={() => toggleSelection(transaction.id)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ),
-            )}
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <ExpandableTransactionList
+                transactions={transactions}
+                accountColorMap={accountColorMap}
+                selectedIds={
+                  allFilteredSelected
+                    ? new Set(
+                        transactions
+                          .filter((transaction) => !deselectedIds.has(transaction.id))
+                          .map((transaction) => transaction.id),
+                      )
+                    : selectedIds
+                }
+                onToggleSelect={toggleSelection}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                linkedTransactionsById={Object.fromEntries(
+                  transactions.map((tx) => [
+                    tx.id,
+                    tx.linkedTransactions || {
+                      reimburses: [],
+                      reimbursedBy: [],
+                    },
+                  ]),
+                )}
+              />
+            </div>
           </div>
-        </>
-      )}
+        )}
+      </div>
 
       {/* Edit Transaction Modal */}
       {editingTransaction && (

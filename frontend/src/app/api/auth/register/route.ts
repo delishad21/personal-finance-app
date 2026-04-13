@@ -3,16 +3,25 @@ import { hash } from "bcryptjs";
 import { prisma } from "@/lib/db/client";
 import { z } from "zod";
 
+const DATA_SERVICE_URL =
+  process.env.DATA_SERVICE_URL || "http://data-service:4001";
+
 const registerSchema = z.object({
   name: z.string().min(1, "Name is required"),
   username: z.string().min(3, "Username must be at least 3 characters"),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  baseCurrency: z
+    .string()
+    .length(3, "Base currency must be a 3-letter ISO code")
+    .optional()
+    .default("SGD")
+    .transform((value) => value.toUpperCase()),
 });
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, username, password } = registerSchema.parse(body);
+    const { name, username, password, baseCurrency } = registerSchema.parse(body);
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -38,7 +47,7 @@ export async function POST(request: NextRequest) {
         settings: {
           create: {
             theme: "light",
-            currency: "USD",
+            currency: baseCurrency,
             dateFormat: "MM/dd/yyyy",
             defaultTimeframe: "month",
           },
@@ -127,6 +136,20 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Seed default import rules in data-service (idempotent)
+    try {
+      await fetch(`${DATA_SERVICE_URL}/api/transactions/import-rules/bootstrap`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId: user.id }),
+        cache: "no-store",
+      });
+    } catch (seedError) {
+      console.error("Failed to bootstrap import rules:", seedError);
+    }
 
     return NextResponse.json(
       { message: "User created successfully", userId: user.id },

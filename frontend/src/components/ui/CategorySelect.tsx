@@ -21,6 +21,7 @@ interface CategorySelectProps {
   excludeReserved?: boolean;
   dropdownPlacement?: "fixed" | "inline";
   showOpenRing?: boolean;
+  emptyLabel?: string;
   triggerProps?: HTMLAttributes<HTMLButtonElement> & {
     [key: `data-${string}`]: string;
   };
@@ -37,6 +38,7 @@ export function CategorySelect({
   excludeReserved = false,
   dropdownPlacement = "fixed",
   showOpenRing = true,
+  emptyLabel = "Uncategorized",
   triggerProps,
 }: CategorySelectProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -165,7 +167,7 @@ export function CategorySelect({
           </>
         ) : (
           <span className="flex-1 text-dark-5 dark:text-dark-6">
-            Uncategorized
+            {emptyLabel}
           </span>
         )}
         {lockedByLinkage ? (
@@ -212,9 +214,7 @@ export function CategorySelect({
             className="w-full flex items-center px-4 py-2.5 text-sm text-left hover:bg-gray-2 dark:hover:bg-dark-3 transition-colors"
           >
             <div className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0 bg-dark-5 dark:bg-dark-6" />
-            <span className="flex-1 text-dark dark:text-white">
-              Uncategorized
-            </span>
+            <span className="flex-1 text-dark dark:text-white">{emptyLabel}</span>
             {!value && <Check className="h-4 w-4 text-primary ml-2" />}
           </button>
 

@@ -1,10 +1,26 @@
+import type { ReactNode } from "react";
+
 export interface TransactionLinkage {
   type: "internal" | "reimbursement" | "reimbursed";
-  reimburses?: string[]; // Transaction IDs this transaction reimburses
-  reimbursedBy?: string[]; // Transaction IDs that reimburse this transaction
+  reimbursesAllocations?: Array<{
+    transactionId?: string;
+    pendingBatchIndex?: number;
+    amount: number;
+    amountBase?: number;
+    reimbursingFxRate?: number;
+    reimbursementBaseAmount?: number;
+  }>;
+  reimbursedByAllocations?: Array<{
+    transactionId: string;
+    amount: number;
+    amountBase?: number;
+  }>;
+  leftoverAmount?: number;
+  leftoverCategoryId?: string | null;
+  reimbursementBaseAmount?: number;
+  reimbursingFxRate?: number;
   autoDetected?: boolean; // True if parser detected
   detectionReason?: string; // Why it was detected
-  _pendingBatchIndices?: number[]; // Temp: batch indices (resolved on commit)
 }
 
 export interface Transaction {
@@ -17,6 +33,11 @@ export interface Transaction {
   balance?: number;
   accountIdentifier?: string;
   accountNumber?: string; // Account number extracted from statement (for import detection)
+  entryTypeOverride?:
+    | "spending"
+    | "reimbursement"
+    | "funding_out"
+    | "funding_in";
   linkage?: TransactionLinkage | null;
   metadata: Record<string, any>;
 }
@@ -71,6 +92,7 @@ export interface TransactionTableProps {
   isCheckingDuplicates?: boolean;
   isImporting?: boolean;
   showDuplicatesOnly?: boolean;
+  showAccountSelector?: boolean;
   onUpdateTransaction: (index: number, field: string, value: any) => void;
   onAccountIdentifierChange: (value: string) => void;
   onAccountColorChange?: (color: string) => void;
@@ -79,9 +101,19 @@ export interface TransactionTableProps {
   onConfirmImport?: () => void;
   onSelectAll?: () => void;
   onDeselectAll?: () => void;
+  onSelectVisible?: (indices: number[]) => void;
+  onDeselectVisible?: (indices: number[]) => void;
   onToggleSelection?: (index: number) => void;
   onAddCategoryClick: () => void;
   onBack?: () => void;
   onLinkageChange?: (index: number, linkage: TransactionLinkage | null) => void;
   onOpenReimbursementSelector?: (index: number) => void;
+  amountInHeader?: string;
+  amountOutHeader?: string;
+  deferCellCommit?: boolean;
+  renderExpandedActions?: (
+    index: number,
+    transaction: Transaction,
+  ) => ReactNode;
+  reviewActionLeft?: ReactNode;
 }

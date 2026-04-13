@@ -47,6 +47,7 @@ interface Transaction {
   amountIn?: number;
   amountOut?: number;
   balance?: number;
+  currency?: string;
   accountIdentifier?: string;
   accountNumber?: string;
   metadata: Record<string, any>;
@@ -161,6 +162,18 @@ export function ImportClient({
     index: number,
     linkage: TransactionLinkage | null,
   ) => {
+    if (linkage?.type === "reimbursement") {
+      const inflow = editedTransactions[index]?.amountIn ?? 0;
+      if (!(inflow > 0)) {
+        showModal(
+          "warning",
+          "Invalid Reimbursement",
+          "Only positive inflow transactions can be marked as reimbursement.",
+        );
+        return;
+      }
+    }
+
     const updated = [...editedTransactions];
     updated[index] = { ...updated[index], linkage };
 
@@ -191,6 +204,16 @@ export function ImportClient({
 
   // Open reimbursement selector modal
   const handleOpenReimbursementSelector = (index: number) => {
+    const transaction = editedTransactions[index];
+    const inflow = transaction?.amountIn ?? 0;
+    if (!(inflow > 0)) {
+      showModal(
+        "warning",
+        "Invalid Reimbursement",
+        "Only positive inflow transactions can be marked as reimbursement.",
+      );
+      return;
+    }
     setReimbursementTargetIndex(index);
     setReimbursementModalOpen(true);
   };
@@ -200,11 +223,19 @@ export function ImportClient({
     if (reimbursementTargetIndex !== null) {
       const currentLinkage =
         editedTransactions[reimbursementTargetIndex]?.linkage;
+      const inflow =
+        editedTransactions[reimbursementTargetIndex]?.amountIn ?? 0;
       if (currentLinkage?.type === "internal") {
         showModal(
           "warning",
           "Invalid Reimbursement",
           "Internal transactions cannot be marked as reimbursements. Clear the internal flag first.",
+        );
+      } else if (!(inflow > 0)) {
+        showModal(
+          "warning",
+          "Invalid Reimbursement",
+          "Only positive inflow transactions can be marked as reimbursement.",
         );
       } else {
         handleLinkageChange(reimbursementTargetIndex, linkage);
@@ -437,6 +468,22 @@ export function ImportClient({
     setSelectedIndices(new Set());
   };
 
+  const handleSelectVisible = (indices: number[]) => {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      indices.forEach((index) => next.add(index));
+      return next;
+    });
+  };
+
+  const handleDeselectVisible = (indices: number[]) => {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      indices.forEach((index) => next.delete(index));
+      return next;
+    });
+  };
+
   const handleToggleSelection = (index: number) => {
     const newSelection = new Set(selectedIndices);
     if (newSelection.has(index)) {
@@ -568,6 +615,8 @@ export function ImportClient({
           onConfirmImport={handleConfirmImport}
           onSelectAll={handleSelectAll}
           onDeselectAll={handleDeselectAll}
+          onSelectVisible={handleSelectVisible}
+          onDeselectVisible={handleDeselectVisible}
           onToggleSelection={handleToggleSelection}
           onAddCategoryClick={() => setIsAddCategoryModalOpen(true)}
           onBack={
@@ -625,6 +674,7 @@ export function ImportClient({
             ? editedTransactions[reimbursementTargetIndex]?.linkage
             : null
         }
+        categories={categories}
       />
     </div>
   );

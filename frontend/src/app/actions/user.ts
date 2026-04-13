@@ -9,6 +9,7 @@ export interface UserProfile {
   name: string | null;
   username: string;
   email: string | null;
+  baseCurrency: string;
 }
 
 export async function getCurrentUser(): Promise<UserProfile | null> {
@@ -19,14 +20,31 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, name: true, username: true, email: true },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      email: true,
+      settings: {
+        select: {
+          currency: true,
+        },
+      },
+    },
   });
+  if (!user) return null;
 
-  return user;
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    email: user.email,
+    baseCurrency: user.settings?.currency || "SGD",
+  };
 }
 
 export async function updateUserProfile(
-  data: Omit<UserProfile, "id">,
+  data: Omit<UserProfile, "id" | "baseCurrency">,
 ): Promise<UserProfile> {
   const session = await auth();
   if (!session?.user?.id) {
@@ -66,10 +84,25 @@ export async function updateUserProfile(
       username: data.username,
       email: data.email,
     },
-    select: { id: true, name: true, username: true, email: true },
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      email: true,
+      settings: {
+        select: {
+          currency: true,
+        },
+      },
+    },
   });
-
-  return user;
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    email: user.email,
+    baseCurrency: user.settings?.currency || "SGD",
+  };
 }
 
 export async function changePassword(

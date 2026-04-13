@@ -7,12 +7,21 @@ import { getAccountNumbers } from "@/app/actions/accountNumbers";
 export default async function ImportPage() {
   // Fetch categories from database (user-specific)
   const [categories, accountNumbers] = await Promise.all([
-    getCategories(),
+    getCategories({ scope: "main" }),
     getAccountNumbers(),
   ]);
 
-  // Fetch parser options from parser service
-  const parsers = await getParserOptions();
+  // Fetch both bank and trip parsers so users can import Revolut/YouTrip
+  // into the main transactions workflow when needed.
+  const [bankParsers, tripParsers] = await Promise.all([
+    getParserOptions("bank"),
+    getParserOptions("trip"),
+  ]);
+  const parserMap = new Map<string, (typeof bankParsers)[number]>();
+  [...bankParsers, ...tripParsers].forEach((parser) => {
+    parserMap.set(parser.id, parser);
+  });
+  const parsers = Array.from(parserMap.values());
 
   // Transform parsers to match the expected format
   const parserOptions = parsers.map((parser) => ({

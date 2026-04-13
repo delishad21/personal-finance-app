@@ -9,26 +9,37 @@ import {
   ArrowLeftRight,
   Receipt,
   Link2,
+  Plane,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/Checkbox";
+import Link from "next/link";
 
-interface TransactionLinkage {
+export interface TransactionLinkage {
   type: "internal" | "reimbursement" | "reimbursed";
-  reimburses?: string[];
-  reimbursedBy?: string[];
+  reimbursesAllocations?: Array<{
+    transactionId?: string;
+    pendingBatchIndex?: number;
+    amount: number;
+  }>;
+  reimbursedByAllocations?: Array<{
+    transactionId: string;
+    amount: number;
+  }>;
   autoDetected?: boolean;
   detectionReason?: string;
 }
 
-interface LinkedTransaction {
+export interface LinkedTransaction {
   id: string;
   date: string;
+  label?: string | null;
   description: string;
   amountIn: number | null;
   amountOut: number | null;
+  reimbursementAmount?: number | null;
 }
 
-interface Transaction {
+export interface TransactionCardTransaction {
   id: string;
   date: string;
   description: string;
@@ -36,20 +47,37 @@ interface Transaction {
   amountIn: number | null;
   amountOut: number | null;
   balance: number | null;
+  currency?: string | null;
+  displayCurrency?: string;
   accountIdentifier?: string | null;
   category?: {
     id: string;
     name: string;
     color: string;
   };
+  tripFundings?: Array<{
+    id: string;
+    trip: { id: string; name: string };
+  }>;
   metadata?: Record<string, any>;
   linkage?: TransactionLinkage | null;
+  accentColor?: string;
+  secondaryAmount?: {
+    value: number;
+    currency: string;
+    direction?: "in" | "out";
+    label?: string;
+    muted?: boolean;
+  };
 }
 
 interface TransactionCardProps {
-  transaction: Transaction;
+  transaction: TransactionCardTransaction;
   accountColor?: string;
-  onEdit?: (transaction: Transaction) => void;
+  accentColor?: string;
+  className?: string;
+  wrapText?: boolean;
+  onEdit?: (transaction: TransactionCardTransaction) => void;
   onDelete?: (id: string) => void;
   selected?: boolean;
   onToggleSelect?: () => void;
@@ -62,6 +90,9 @@ interface TransactionCardProps {
 export function TransactionCard({
   transaction,
   accountColor,
+  accentColor,
+  className,
+  wrapText = false,
   onEdit,
   onDelete,
   selected = false,
@@ -84,21 +115,31 @@ export function TransactionCard({
     });
   };
 
-  const formatAmount = (amount: number | null) => {
+  const formatAmountInCurrency = (amount: number | null, currency?: string | null) => {
     if (amount === null) return "-";
     return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency: currency || transaction.displayCurrency || transaction.currency || "SGD",
     }).format(amount);
   };
+  const formatAmount = (amount: number | null) =>
+    formatAmountInCurrency(amount, transaction.displayCurrency || transaction.currency || "SGD");
 
   const amount = transaction.amountIn ?? transaction.amountOut ?? 0;
   const isIncome = transaction.amountIn !== null;
+  const reimbursedTotal =
+    linkedTransactions?.reimbursedBy.reduce(
+      (sum, linked) => sum + (linked.reimbursementAmount ?? 0),
+      0,
+    ) ?? 0;
+  const currentOut = Math.max(transaction.amountOut ?? 0, 0);
+  const remainingOut = Math.max(currentOut - reimbursedTotal, 0);
 
   // Determine left border color based on linkage type
   const getLeftBorderColor = () => {
     if (isReimbursement) return "#22c55e"; // bright green for reimbursement
     if (isInternal) return "#9ca3af"; // gray for internal
+    if (accentColor) return accentColor;
     return accountColor;
   };
 
@@ -106,20 +147,20 @@ export function TransactionCard({
     <div
       className={`bg-white dark:bg-dark-2 transition-colors border ${
         isExpanded || selected ? "border-primary" : "border-transparent"
-      } ${isInternal ? "opacity-70" : ""}`}
+      } ${isInternal ? "opacity-70" : ""} ${className || ""}`}
     >
       {/* Main Content */}
       <div
         onClick={() => setIsExpanded((prev) => !prev)}
         className="relative p-4 pl-6 cursor-pointer hover:bg-gray-1 dark:hover:bg-dark-3/50"
       >
-        {(accountColor || isReimbursement || isInternal) && (
+        {(accentColor || accountColor || isReimbursement || isInternal) && (
           <span
             className="absolute left-0 top-0 h-full w-1"
             style={{ backgroundColor: getLeftBorderColor() }}
           />
         )}
-        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start justify-between gap-4">
           {onToggleSelect && (
             <div className="pt-1" onClick={(event) => event.stopPropagation()}>
               <Checkbox checked={selected} onChange={onToggleSelect} />
@@ -127,16 +168,40 @@ export function TransactionCard({
           )}
           {/* Left: Description */}
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-dark dark:text-white truncate">
+            <div
+              className={`font-medium text-dark dark:text-white ${
+                wrapText ? "break-words whitespace-normal" : "truncate"
+              }`}
+            >
               {transaction.label && transaction.label.trim().length > 0
                 ? transaction.label
                 : transaction.description}
             </div>
-            <div className="mt-0.5 text-xs text-dark-5 dark:text-dark-6 truncate">
+            <div
+              className={`mt-0.5 text-xs text-dark-5 dark:text-dark-6 ${
+                wrapText ? "break-words whitespace-normal" : "truncate"
+              }`}
+            >
               {transaction.description}
             </div>
+            {transaction.tripFundings && transaction.tripFundings.length > 0 && (
+              <div className="mt-1">
+                <Link
+                  href={`/trips/${transaction.tripFundings[0].trip.id}`}
+                  onClick={(event) => event.stopPropagation()}
+                  className="inline-flex items-center gap-1 rounded-full border border-stroke dark:border-dark-3 px-2 py-0.5 text-[11px] text-primary hover:border-primary"
+                >
+                  <Plane className="h-3 w-3" />
+                  Funding: {transaction.tripFundings[0].trip.name}
+                </Link>
+              </div>
+            )}
             {transaction.category && (
-              <div className="mt-1 flex items-center gap-2 text-xs text-dark-5 dark:text-dark-6 truncate">
+              <div
+                className={`mt-1 flex items-center gap-2 text-xs text-dark-5 dark:text-dark-6 ${
+                  wrapText ? "whitespace-normal break-words" : "truncate"
+                }`}
+              >
                 <span
                   className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: transaction.category.color }}
@@ -185,6 +250,30 @@ export function TransactionCard({
                 {isIncome ? "+" : "-"}
                 {formatAmount(Math.abs(amount))}
               </div>
+              {transaction.secondaryAmount && transaction.secondaryAmount.value > 0 && (
+                <div
+                  className={`text-xs ${
+                    transaction.secondaryAmount.muted
+                      ? "text-dark-5 dark:text-dark-6"
+                      : isIncome ||
+                          transaction.secondaryAmount.direction === "in"
+                        ? "text-green dark:text-green-light"
+                        : "text-red dark:text-red-light"
+                  }`}
+                >
+                  {transaction.secondaryAmount.direction
+                    ? transaction.secondaryAmount.direction === "in"
+                      ? "+"
+                      : "-"
+                    : isIncome
+                      ? "+"
+                      : "-"}
+                  {formatAmountInCurrency(
+                    Math.abs(transaction.secondaryAmount.value),
+                    transaction.secondaryAmount.currency,
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-1">
@@ -231,7 +320,7 @@ export function TransactionCard({
       {/* Expanded Details */}
       <div
         className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-out ${
-          isExpanded ? "max-h-105 opacity-100" : "max-h-0 opacity-0"
+          isExpanded ? "max-h-[1400px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
         <div className="border-t border-stroke dark:border-dark-3 bg-gray-1 dark:bg-dark-3/50 p-4">
@@ -316,6 +405,39 @@ export function TransactionCard({
               </div>
             )}
 
+            {transaction.secondaryAmount && transaction.secondaryAmount.value > 0 && (
+              <div>
+                <div className="text-dark-5 dark:text-dark-6">
+                  {transaction.secondaryAmount.label || "Secondary Amount"}
+                </div>
+                <div
+                  className={`font-medium mt-0.5 ${
+                    transaction.secondaryAmount.muted
+                      ? "text-dark-5 dark:text-dark-6"
+                      : transaction.secondaryAmount.direction
+                        ? transaction.secondaryAmount.direction === "in"
+                          ? "text-green dark:text-green-light"
+                          : "text-red dark:text-red-light"
+                        : isIncome
+                          ? "text-green dark:text-green-light"
+                          : "text-red dark:text-red-light"
+                  }`}
+                >
+                  {transaction.secondaryAmount.direction
+                    ? transaction.secondaryAmount.direction === "in"
+                      ? "+"
+                      : "-"
+                    : isIncome
+                      ? "+"
+                      : "-"}
+                  {formatAmountInCurrency(
+                    Math.abs(transaction.secondaryAmount.value),
+                    transaction.secondaryAmount.currency,
+                  )}
+                </div>
+              </div>
+            )}
+
             {transaction.metadata &&
               Object.keys(transaction.metadata).length > 0 && (
                 <div className="col-span-2">
@@ -346,22 +468,53 @@ export function TransactionCard({
               (linkedTransactions.reimburses.length > 0 ||
                 linkedTransactions.reimbursedBy.length > 0) && (
                 <div className="col-span-2 mt-2">
+                  {linkedTransactions.reimbursedBy.length > 0 &&
+                    transaction.amountOut !== null && (
+                      <div className="mb-3 grid grid-cols-1 gap-2 rounded border border-stroke bg-white p-3 dark:border-dark-3 dark:bg-dark-2 md:grid-cols-3">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wide text-dark-5 dark:text-dark-6">
+                            Original Out
+                          </div>
+                          <div className="text-sm font-semibold text-red dark:text-red-light">
+                            {formatAmount(currentOut)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wide text-dark-5 dark:text-dark-6">
+                            Reimbursed
+                          </div>
+                          <div className="text-sm font-semibold text-green dark:text-green-light">
+                            {formatAmount(reimbursedTotal)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wide text-dark-5 dark:text-dark-6">
+                            Remaining
+                          </div>
+                          <div className="text-sm font-semibold text-primary">
+                            {formatAmount(remainingOut)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                   {/* Reimburses Section */}
                   {linkedTransactions.reimburses.length > 0 && (
-                    <div className="mb-3">
-                      <div className="text-dark-5 dark:text-dark-6 mb-2 flex items-center gap-2">
+                    <div className="mb-4">
+                      <div className="text-dark-5 dark:text-dark-6 mb-3 flex items-center gap-2">
                         <Receipt className="w-4 h-4 text-green" />
                         <span>
-                          Reimburses ({linkedTransactions.reimburses.length})
+                          This reimbursement pays ({linkedTransactions.reimburses.length})
                         </span>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         {linkedTransactions.reimburses.map((linked) => (
                           <LinkedTransactionPreview
                             key={linked.id}
                             transaction={linked}
                             formatDate={formatDate}
                             formatAmount={formatAmount}
+                            mode="pays"
                           />
                         ))}
                       </div>
@@ -371,20 +524,21 @@ export function TransactionCard({
                   {/* Reimbursed By Section */}
                   {linkedTransactions.reimbursedBy.length > 0 && (
                     <div>
-                      <div className="text-dark-5 dark:text-dark-6 mb-2 flex items-center gap-2">
+                      <div className="text-dark-5 dark:text-dark-6 mb-3 flex items-center gap-2">
                         <Link2 className="w-4 h-4 text-green" />
                         <span>
-                          Reimbursed By (
+                          Reimbursed by (
                           {linkedTransactions.reimbursedBy.length})
                         </span>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         {linkedTransactions.reimbursedBy.map((linked) => (
                           <LinkedTransactionPreview
                             key={linked.id}
                             transaction={linked}
                             formatDate={formatDate}
                             formatAmount={formatAmount}
+                            mode="received"
                           />
                         ))}
                       </div>
@@ -404,33 +558,65 @@ function LinkedTransactionPreview({
   transaction,
   formatDate,
   formatAmount,
+  mode,
 }: {
   transaction: LinkedTransaction;
   formatDate: (date: string) => string;
   formatAmount: (amount: number | null) => string;
+  mode: "pays" | "received";
 }) {
   const amount = transaction.amountIn ?? transaction.amountOut ?? 0;
   const isIncome = transaction.amountIn !== null;
+  const accentColor =
+    mode === "pays"
+      ? "bg-primary"
+      : "bg-green dark:bg-green-light";
+  const title =
+    transaction.label && transaction.label.trim().length > 0
+      ? transaction.label
+      : transaction.description;
 
   return (
-    <div className="flex items-center justify-between p-2 bg-white dark:bg-dark-2 rounded border border-stroke dark:border-dark-3">
-      <div className="flex-1 min-w-0">
-        <div className="text-xs text-dark-5 dark:text-dark-6">
-          {formatDate(transaction.date)}
+    <div className="relative flex items-center justify-between gap-4 rounded border border-stroke bg-white px-4 py-3 dark:border-dark-3 dark:bg-dark-2">
+      <span
+        aria-hidden
+        className={`absolute left-0 top-0 h-full w-1 rounded-l ${accentColor}`}
+      />
+      <div className="min-w-0 flex-1 pl-2">
+        <div className="flex items-center gap-2.5 text-xs text-dark-5 dark:text-dark-6">
+          <span>{formatDate(transaction.date)}</span>
+          <span>#{transaction.id.slice(-6)}</span>
+          <span className="rounded bg-gray-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-dark-5 dark:bg-dark-3 dark:text-dark-6">
+            {mode === "pays" ? "Paid by reimbursement" : "Reimbursed by"}
+          </span>
         </div>
-        <div className="text-sm text-dark dark:text-white truncate">
+        <div className="mt-1 truncate text-sm font-semibold text-dark dark:text-white">
+          {title}
+        </div>
+        <div className="mt-0.5 truncate text-xs text-dark-5 dark:text-dark-6">
           {transaction.description}
         </div>
       </div>
-      <div
-        className={`text-sm font-medium ml-3 ${
-          isIncome
-            ? "text-green dark:text-green-light"
-            : "text-red dark:text-red-light"
-        }`}
-      >
-        {isIncome ? "+" : "-"}
-        {formatAmount(Math.abs(amount))}
+      <div className="text-right pl-3">
+        <div className="text-[11px] uppercase tracking-wide text-dark-5 dark:text-dark-6">
+          {mode === "pays" ? "Allocated" : "Received"}
+        </div>
+        <div className="text-sm font-semibold text-primary">
+          {formatAmount(transaction.reimbursementAmount ?? 0)}
+        </div>
+        {transaction.reimbursementAmount === null ||
+        transaction.reimbursementAmount === undefined ? (
+          <div
+            className={`text-xs ${
+              isIncome
+                ? "text-green dark:text-green-light"
+                : "text-red dark:text-red-light"
+            }`}
+          >
+            {isIncome ? "+" : "-"}
+            {formatAmount(Math.abs(amount))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

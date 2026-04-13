@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { getCurrencyOptions } from "@/lib/currencies";
+import { registerUser } from "@/app/actions/auth";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -11,8 +13,10 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [baseCurrency, setBaseCurrency] = useState("SGD");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const currencyOptions = getCurrencyOptions();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,24 +35,13 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name, username, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Registration failed");
-        return;
-      }
+      await registerUser({ name, username, password, baseCurrency });
 
       router.push("/login?registered=true");
     } catch (err) {
-      setError("An error occurred. Please try again.");
+      setError(
+        err instanceof Error ? err.message : "An error occurred. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -127,6 +120,27 @@ export default function RegisterPage() {
                   className="w-full rounded-lg border border-stroke bg-gray-2 px-4 py-3 text-dark outline-none transition-colors focus:border-primary dark:border-dark-3 dark:bg-dark-2 dark:text-white dark:focus:border-primary"
                   placeholder="Choose a username"
                 />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="baseCurrency"
+                  className="mb-2 block text-sm font-medium text-dark dark:text-white"
+                >
+                  Base Currency
+                </label>
+                <select
+                  id="baseCurrency"
+                  value={baseCurrency}
+                  onChange={(e) => setBaseCurrency(e.target.value)}
+                  className="w-full rounded-lg border border-stroke bg-gray-2 px-4 py-3 text-dark outline-none transition-colors focus:border-primary dark:border-dark-3 dark:bg-dark-2 dark:text-white dark:focus:border-primary"
+                >
+                  {currencyOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

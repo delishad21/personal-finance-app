@@ -7,21 +7,30 @@ const DATA_SERVICE_URL =
 
 export interface TransactionLinkage {
   type: "internal" | "reimbursement" | "reimbursed";
-  reimburses?: string[];
-  reimbursedBy?: string[];
+  reimbursesAllocations?: Array<{
+    transactionId?: string;
+    pendingBatchIndex?: number;
+    amount: number;
+  }>;
+  reimbursedByAllocations?: Array<{
+    transactionId: string;
+    amount: number;
+  }>;
+  leftoverAmount?: number;
+  leftoverCategoryId?: string | null;
   autoDetected?: boolean;
   detectionReason?: string;
-  _pendingBatchIndices?: number[];
 }
 
 export interface ImportTransaction {
   date: Date | string;
   description: string;
   label?: string;
-  categoryId?: string;
+  categoryId?: string | null;
   amountIn?: number;
   amountOut?: number;
   balance?: number;
+  currency?: string;
   accountIdentifier?: string;
   source?: string;
   metadata?: any;
@@ -177,9 +186,9 @@ export async function getTransactions(filters?: {
     ...(filters?.offset && { offset: filters.offset.toString() }),
   });
 
-  const response = await fetch(
-    `${DATA_SERVICE_URL}/api/transactions?${params}`,
-  );
+  const response = await fetch(`${DATA_SERVICE_URL}/api/transactions?${params}`, {
+    cache: "no-store",
+  });
 
   if (!response.ok) {
     const error = await response.json();
@@ -197,6 +206,7 @@ export async function getTransactionYears(): Promise<number[]> {
 
   const response = await fetch(
     `${DATA_SERVICE_URL}/api/transactions/years?userId=${session.user.id}`,
+    { cache: "no-store" },
   );
 
   if (!response.ok) {
@@ -446,8 +456,9 @@ export async function exportTransactionsCsv(
  * Search transactions for reimbursement linking
  */
 export async function searchTransactionsForReimbursement(
-  query: string,
+  query?: string,
   limit: number = 20,
+  offset: number = 0,
 ) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -456,8 +467,9 @@ export async function searchTransactionsForReimbursement(
 
   const params = new URLSearchParams({
     userId: session.user.id,
-    query,
     limit: limit.toString(),
+    offset: offset.toString(),
+    ...(query?.trim() ? { query: query.trim() } : {}),
   });
 
   const response = await fetch(

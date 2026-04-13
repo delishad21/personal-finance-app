@@ -10,6 +10,7 @@ import type { Category } from "@/app/actions/categories";
 interface ManageCategoriesModalProps {
   isOpen: boolean;
   categories: Category[];
+  lockedCategoryNames?: string[];
   newCategory: { name: string; color: string };
   onClose: () => void;
   onNewCategoryChange: (next: { name: string; color: string }) => void;
@@ -23,6 +24,7 @@ interface ManageCategoriesModalProps {
 export function ManageCategoriesModal({
   isOpen,
   categories,
+  lockedCategoryNames = [],
   newCategory,
   onClose,
   onNewCategoryChange,
@@ -34,6 +36,7 @@ export function ManageCategoriesModal({
 }: ManageCategoriesModalProps) {
   if (!isOpen) return null;
   const [showAddForm, setShowAddForm] = useState(false);
+  const lockedSet = new Set(lockedCategoryNames.map((item) => item.toLowerCase()));
 
   return (
     <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4">
@@ -128,13 +131,19 @@ export function ManageCategoriesModal({
                       onCategoryNameChange(category.id, e.target.value)
                     }
                     className="w-full"
+                    disabled={lockedSet.has(category.name.toLowerCase())}
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => onDeleteCategory(category.id)}
-                  className="h-9 w-9 rounded-lg border border-stroke dark:border-dark-3 text-red hover:border-red hover:text-red-light transition-colors flex items-center justify-center"
-                  title="Delete category"
+                  disabled={lockedSet.has(category.name.toLowerCase())}
+                  className="h-9 w-9 rounded-lg border border-stroke dark:border-dark-3 text-red hover:border-red hover:text-red-light disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                  title={
+                    lockedSet.has(category.name.toLowerCase())
+                      ? "Trip categories cannot be deleted"
+                      : "Delete category"
+                  }
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

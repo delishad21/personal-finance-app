@@ -1,4 +1,5 @@
 import { CheckCircle } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { AccountIdentifierSelect } from "@/components/ui/AccountIdentifierSelect";
 import { ParseResult } from "./types";
@@ -19,6 +20,7 @@ interface TransactionTableToolbarProps {
   totalCount: number;
   duplicateCount: number;
   showDuplicatesOnly: boolean;
+  showAccountSelector?: boolean;
   isCheckingDuplicates: boolean;
   isImporting: boolean;
   onBack?: () => void;
@@ -27,6 +29,7 @@ interface TransactionTableToolbarProps {
   onAccountIdentifierChange: (value: string) => void;
   onAccountColorChange?: (color: string) => void;
   onAddAccountIdentifier?: () => void;
+  reviewActionLeft?: ReactNode;
 }
 
 export function TransactionTableToolbar({
@@ -39,6 +42,7 @@ export function TransactionTableToolbar({
   totalCount,
   duplicateCount,
   showDuplicatesOnly,
+  showAccountSelector = true,
   isCheckingDuplicates,
   isImporting,
   onBack,
@@ -47,6 +51,7 @@ export function TransactionTableToolbar({
   onAccountIdentifierChange,
   onAccountColorChange,
   onAddAccountIdentifier,
+  reviewActionLeft,
 }: TransactionTableToolbarProps) {
   return (
     <div className="shrink-0 py-3 mb-3">
@@ -76,7 +81,7 @@ export function TransactionTableToolbar({
         </div>
 
         <div className="flex items-center gap-4">
-          {!showDuplicatesOnly && (
+          {!showDuplicatesOnly && showAccountSelector && (
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-dark dark:text-white whitespace-nowrap">
                 Account:
@@ -110,16 +115,19 @@ export function TransactionTableToolbar({
             </div>
           ) : (
             /* Review stage */
-            <Button
-              variant="success"
-              onClick={onImport}
-              disabled={isCheckingDuplicates || selectedCount === 0}
-              leftIcon={<CheckCircle className="h-4 w-4" />}
-            >
-              {isCheckingDuplicates
-                ? "Checking..."
-                : `Import Selected (${selectedCount})`}
-            </Button>
+            <div className="flex items-end gap-3">
+              {reviewActionLeft}
+              <Button
+                variant="success"
+                onClick={onImport}
+                disabled={isCheckingDuplicates || selectedCount === 0}
+                leftIcon={<CheckCircle className="h-4 w-4" />}
+              >
+                {isCheckingDuplicates
+                  ? "Checking..."
+                  : `Import Selected (${selectedCount})`}
+              </Button>
+            </div>
           )}
         </div>
       </div>

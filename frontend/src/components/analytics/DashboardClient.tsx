@@ -16,6 +16,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
+import { getDashboardAnalytics } from "@/app/actions/analytics";
 
 type Category = { id: string; name: string; color: string };
 
@@ -98,8 +99,7 @@ export function DashboardClient({ initialData }: { initialData: DashboardData })
   const handleTimeframeChange = async (value: string) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/analytics/dashboard?timeframe=${value}`);
-      const json = await response.json();
+      const json = await getDashboardAnalytics(Number(value));
       setData(json);
     } finally {
       setLoading(false);
@@ -181,7 +181,7 @@ export function DashboardClient({ initialData }: { initialData: DashboardData })
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
+      <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
         <Card className="min-h-[360px]">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Cash Flow</CardTitle>
