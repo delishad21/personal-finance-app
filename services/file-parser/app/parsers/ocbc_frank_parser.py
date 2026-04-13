@@ -242,6 +242,7 @@ def _finalize_transaction(
             "source": "pdf",
             "parserId": "ocbc_frank_statement",
             "bank": "OCBC",
+            "currency": "SGD",
             **account_metadata,
         },
     }

@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-from .parsers import PARSER_MAP
+from .parsers import PARSER_MAP, revolut_statement_parser
 
 app = Flask(__name__)
 
@@ -28,6 +28,7 @@ def parse_file():
         return jsonify({"error": "No file provided"}), 400
 
     file = request.files["file"]
+    supplemental_file = request.files.get("supplementalFile")
     parser_id = request.form.get("parserId")
 
     if not file or not file.filename:
@@ -38,10 +39,12 @@ def parse_file():
 
     # Get file extension
     filename = secure_filename(file.filename)
-    file_extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
     # Read file content
     content = file.read()
+    supplemental_content = None
+    if supplemental_file and supplemental_file.filename:
+        supplemental_content = supplemental_file.read()
 
     try:
         # Get the parser function from the map
@@ -49,8 +52,13 @@ def parse_file():
         if not parser_func:
             return jsonify({"error": f"Unknown parser: {parser_id}"}), 400
 
-        # All parsers now use the same interface
-        transactions = parser_func(content)
+        if parser_id == "revolut_statement" and supplemental_content:
+            transactions = revolut_statement_parser.parse_with_supplemental(
+                content, supplemental_content
+            )
+        else:
+            # All parsers now use the same interface
+            transactions = parser_func(content)
 
         return jsonify({
             "success": True,
@@ -69,33 +77,57 @@ def parse_file():
 @app.route("/parsers", methods=["GET"])
 def get_parsers():
     """Get list of available parsers"""
+    mode = (request.args.get("mode") or "bank").strip().lower()
+    parser_items = [
+        {
+            "id": "generic_csv",
+            "name": "Generic CSV",
+            "fileType": "csv",
+            "description": "Generic CSV parser with customizable column mapping",
+            "mode": "bank",
+        },
+        {
+            "id": "dbs_paylah_statement",
+            "name": "DBS PayLah! Statement",
+            "fileType": "pdf",
+            "description": "Parser for DBS PayLah! wallet statements",
+            "mode": "bank",
+        },
+        {
+            "id": "dbs_posb_consolidated",
+            "name": "DBS/POSB Consolidated Statement",
+            "fileType": "pdf",
+            "description": "Parser for DBS/POSB monthly statements",
+            "mode": "bank",
+        },
+        {
+            "id": "ocbc_frank_statement",
+            "name": "OCBC FRANK Account Statement",
+            "fileType": "pdf",
+            "description": "Parser for OCBC FRANK account statements",
+            "mode": "bank",
+        },
+        {
+            "id": "revolut_statement",
+            "name": "Revolut Statement",
+            "fileType": "pdf/csv",
+            "description": "Trip parser for Revolut statements (PDF, CSV, or merged PDF+CSV)",
+            "mode": "trip",
+        },
+        {
+            "id": "youtrip_statement",
+            "name": "YouTrip Statement",
+            "fileType": "pdf",
+            "description": "Trip parser for YouTrip statements",
+            "mode": "trip",
+        },
+    ]
+
+    if mode in {"bank", "trip"}:
+        parser_items = [item for item in parser_items if item["mode"] == mode]
+
     return jsonify({
-        "parsers": [
-            {
-                "id": "generic_csv",
-                "name": "Generic CSV",
-                "fileType": "csv",
-                "description": "Generic CSV parser with customizable column mapping",
-            },
-            {
-                "id": "dbs_paylah_statement",
-                "name": "DBS PayLah! Statement",
-                "fileType": "pdf",
-                "description": "Parser for DBS PayLah! wallet statements",
-            },
-            {
-                "id": "dbs_posb_consolidated",
-                "name": "DBS/POSB Consolidated Statement",
-                "fileType": "pdf",
-                "description": "Parser for DBS/POSB monthly statements",
-            },
-            {
-                "id": "ocbc_frank_statement",
-                "name": "OCBC FRANK Account Statement",
-                "fileType": "pdf",
-                "description": "Parser for OCBC FRANK account statements",
-            },
-        ]
+        "parsers": parser_items
     })
 
 

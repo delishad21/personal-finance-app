@@ -1,29 +1,9 @@
 """DBS PayLah! Statement Parser"""
 import re
 from datetime import datetime
-from typing import Optional
 from dateutil import parser as date_parser
 import pdfplumber
 import io
-
-
-def _detect_internal_transaction(description: str) -> Optional[dict]:
-    """Detect if transaction is an internal transfer based on description."""
-    INTERNAL_PATTERNS = [
-        "TOP UP WALLET FROM MY ACCOUNT",
-        "TOP-UP FROM BANK ACCOUNT",
-        "TRANSFER FROM BANK",
-    ]
-
-    description_upper = description.upper()
-    for pattern in INTERNAL_PATTERNS:
-        if pattern in description_upper:
-            return {
-                "type": "internal",
-                "autoDetected": True,
-                "detectionReason": f"Description contains '{pattern}'"
-            }
-    return None
 
 
 def parse(content: bytes) -> list[dict]:
@@ -91,17 +71,16 @@ def parse(content: bytes) -> list[dict]:
                 except:
                     date_formatted = date_str
 
-                linkage = _detect_internal_transaction(description)
                 transaction = {
                     "date": date_formatted,
                     "description": description,
                     "amountIn": amount if tx_type == "CR" else None,
                     "amountOut": amount if tx_type == "DB" else None,
-                    "linkage": linkage,
                     "metadata": {
                         "source": "pdf",
                         "parserId": "dbs_paylah_statement",
                         "bank": "DBS",
+                        "currency": "SGD",
                         "transactionType": "credit" if tx_type == "CR" else "debit",
                         **account_metadata,
                     },
@@ -109,7 +88,7 @@ def parse(content: bytes) -> list[dict]:
                 if account_number:
                     transaction["accountNumber"] = account_number
                     transaction["accountIdentifier"] = account_number
-                print(f"Found: {date_str} | {description} | {amount} {tx_type}" + (f" | INTERNAL" if linkage else ""))
+                print(f"Found: {date_str} | {description} | {amount} {tx_type}")
                 transactions.append(transaction)
 
         print(f"\nTotal transactions found: {len(transactions)}")

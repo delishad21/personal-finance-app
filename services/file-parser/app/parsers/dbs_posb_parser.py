@@ -24,25 +24,6 @@ def _extract_account_number(text: str) -> Optional[str]:
     return None
 
 
-def _detect_internal_transaction(description: str) -> Optional[dict]:
-    """Detect if transaction is an internal transfer based on description."""
-    INTERNAL_PATTERNS = [
-        "TOP-UP TO PAYLAH!",
-        "TOP UP TO PAYLAH",
-        "TRANSFER TO PAYLAH",
-    ]
-
-    description_upper = description.upper()
-    for pattern in INTERNAL_PATTERNS:
-        if pattern in description_upper:
-            return {
-                "type": "internal",
-                "autoDetected": True,
-                "detectionReason": f"Description contains '{pattern}'"
-            }
-    return None
-
-
 def parse(content: bytes) -> list[dict]:
     """Parse DBS/POSB consolidated statement using pdfplumber."""
     print("\n=== POSB Statement Parser ===")
@@ -110,8 +91,19 @@ def parse(content: bytes) -> list[dict]:
                 or "Page " in line
             ):
                 # Process pending transaction if exists
-                if pending_transaction:
-                    print(f"Pending at page break: {pending_transaction.get('description', 'N/A')}")
+                if pending_transaction and pending_transaction.get("amounts"):
+                    tx, previous_balance = _finalize_transaction(
+                        pending_transaction,
+                        account_metadata,
+                        previous_balance,
+                        account_number,
+                    )
+                    transactions.append(tx)
+                elif pending_transaction:
+                    print(
+                        f"Pending at page break (incomplete): "
+                        f"{pending_transaction.get('description', 'N/A')}"
+                    )
                 in_section = False
                 pending_transaction = None
                 continue
@@ -147,18 +139,17 @@ def parse(content: bytes) -> list[dict]:
 
                 is_deposit = previous_balance is not None and balance > previous_balance
 
-                linkage = _detect_internal_transaction(description)
                 transaction = {
                     "date": date_formatted,
                     "description": description,
                     "amountOut": None if is_deposit else amt,
                     "amountIn": amt if is_deposit else None,
                     "balance": balance,
-                    "linkage": linkage,
                     "metadata": {
                         "source": "pdf",
                         "parserId": "dbs_posb_consolidated",
                         "bank": "DBS/POSB",
+                        "currency": "SGD",
                         **account_metadata,
                     },
                 }
@@ -168,7 +159,6 @@ def parse(content: bytes) -> list[dict]:
                 print(
                     f"Found: {date_str} | {description} | "
                     f"{'In' if is_deposit else 'Out'}: {amt} | Bal: {balance}"
-                    + (f" | INTERNAL" if linkage else "")
                 )
                 transactions.append(transaction)
                 previous_balance = balance
@@ -258,24 +248,22 @@ def _finalize_transaction(
     if previous_balance is not None and balance is not None:
         is_deposit = balance > previous_balance
 
-    linkage = _detect_internal_transaction(pending["description"])
     transaction = {
         "date": date_formatted,
         "description": pending["description"],
         "amountOut": None if is_deposit else amount,
         "amountIn": amount if is_deposit else None,
         "balance": balance,
-        "linkage": linkage,
         "metadata": {
             "source": "pdf",
             "parserId": "dbs_posb_consolidated",
             "bank": "DBS/POSB",
+            "currency": "SGD",
             **account_metadata,
         },
     }
     if account_number:
         transaction["accountNumber"] = account_number
-        transaction["accountIdentifier"] = account_number
         transaction["accountIdentifier"] = account_number
     return transaction, balance if balance is not None else previous_balance
 
@@ -283,7 +271,8 @@ def _finalize_transaction(
 def _find_column_positions(pdf) -> Optional[dict]:
     """Find withdrawal/deposit/balance column x positions from header row."""
     for page in pdf.pages:
-        words = page.extract_words()
+        # Ignore rotated/margin artefacts that often appear as random characters.
+        words = [w for w in page.extract_words() if w.get("upright", True)]
         lines = {}
         for word in words:
             top_key = round(word["top"], 1)
@@ -326,8 +315,18 @@ def _parse_with_columns(
     previous_balance = None
     pending_tx = None
 
+    def _has_meaningful_pending(tx: Optional[dict]) -> bool:
+        if not tx:
+            return False
+        if tx.get("amountOut") is not None:
+            return True
+        if tx.get("amountIn") is not None:
+            return True
+        return False
+
     for page in pdf.pages:
-        words = page.extract_words()
+        # Ignore rotated/margin artefacts that often appear as random characters.
+        words = [w for w in page.extract_words() if w.get("upright", True)]
         # Group words by line using top coordinate
         lines = {}
         for word in words:
@@ -363,6 +362,10 @@ def _parse_with_columns(
                 or line_text.startswith("Messages For")
                 or line_text.startswith("Transaction Details as of")
             ):
+                if _has_meaningful_pending(pending_tx):
+                    tx = _build_transaction(pending_tx, account_metadata, account_number)
+                    transactions.append(tx)
+                    previous_balance = pending_tx.get("balance")
                 in_section = False
                 pending_tx = None
                 continue
@@ -373,8 +376,8 @@ def _parse_with_columns(
             # Detect new transaction line by date token at start
             date_match = re.match(r"^(\d{2}/\d{2}/\d{4})\b", line_text)
             if date_match:
-                if pending_tx:
-                    tx = _build_transaction(pending_tx, account_metadata)
+                if _has_meaningful_pending(pending_tx):
+                    tx = _build_transaction(pending_tx, account_metadata, account_number)
                     transactions.append(tx)
                     previous_balance = pending_tx.get("balance")
 
@@ -420,8 +423,8 @@ def _parse_with_columns(
                             (pending_tx["description"] + " " + " ".join(extra_desc)).strip()
                         )
 
-        if in_section and pending_tx:
-            tx = _build_transaction(pending_tx, account_metadata)
+        if in_section and _has_meaningful_pending(pending_tx):
+            tx = _build_transaction(pending_tx, account_metadata, account_number)
             transactions.append(tx)
             previous_balance = pending_tx.get("balance")
             pending_tx = None
@@ -433,18 +436,17 @@ def _build_transaction(pending: dict, account_metadata: dict, account_number: Op
     """Build transaction from pending data."""
     date_parts = pending["date"].split("/")
     date_formatted = f"{date_parts[2]}-{date_parts[1]}-{date_parts[0]}"
-    linkage = _detect_internal_transaction(pending["description"])
     transaction = {
         "date": date_formatted,
         "description": pending["description"],
         "amountOut": pending.get("amountOut"),
         "amountIn": pending.get("amountIn"),
         "balance": pending.get("balance"),
-        "linkage": linkage,
         "metadata": {
             "source": "pdf",
             "parserId": "dbs_posb_consolidated",
             "bank": "DBS/POSB",
+            "currency": "SGD",
             **account_metadata,
         },
     }
