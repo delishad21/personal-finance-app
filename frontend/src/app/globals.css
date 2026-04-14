@@ -20,14 +20,14 @@
    * Stroke/Border colors
    * ──────────────────────────────────────────── */
   --color-stroke: #E6EBF1;
-  --color-stroke-dark: #27303E;
+  --color-stroke-dark: #1A2432;
 
   /* ─────────────────────────────────────────────
    * Dark scale
    * ──────────────────────────────────────────── */
   --color-dark: #111928;
-  --color-dark-2: #1F2A37;
-  --color-dark-3: #374151;
+  --color-dark-2: #0F1725;
+  --color-dark-3: #1C2A3C;
   --color-dark-4: #4B5563;
   --color-dark-5: #6B7280;
   --color-dark-6: #9CA3AF;
@@ -38,7 +38,7 @@
    * Gray scale
    * ──────────────────────────────────────────── */
   --color-gray: #EFF4FB;
-  --color-gray-dark: #122031;
+  --color-gray-dark: #0A1320;
   --color-gray-1: #F9FAFB;
   --color-gray-2: #F3F4F6;
   --color-gray-3: #E5E7EB;
@@ -110,7 +110,7 @@
   /* ─────────────────────────────────────────────
    * Dark mode specific
    * ──────────────────────────────────────────── */
-  --color-dark-bg: #020D1A;
+  --color-dark-bg: #040A14;
   --color-white-10: rgba(255, 255, 255, 0.1);
 
   /* ─────────────────────────────────────────────

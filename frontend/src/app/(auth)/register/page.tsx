@@ -48,7 +48,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-white to-gray-1 dark:from-gray-dark dark:to-dark-bg p-4">
+    <div className="min-h-screen bg-gray-1 p-4 dark:bg-dark-bg">
       {/* Theme Toggle - Top Right */}
       <div className="fixed right-4 top-4">
         <ThemeToggle />
@@ -69,7 +69,7 @@ export default function RegisterPage() {
           </div>
 
           {/* Card */}
-          <div className="rounded-xl border border-stroke bg-white p-8 shadow-lg dark:border-stroke-dark dark:bg-gray-dark">
+          <div className="rounded-xl border border-stroke bg-white p-8 shadow-lg dark:border-stroke-dark dark:bg-dark-2">
             <h1 className="mb-2 text-center text-3xl font-bold text-dark dark:text-white">
               Sign Up
             </h1>
@@ -184,7 +184,7 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
+                className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
                 {loading ? "Creating account..." : "Sign Up"}
               </button>
