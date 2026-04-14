@@ -198,6 +198,16 @@ const TripEntriesFilterSchema = z.object({
 const TripReimbursementSearchQuerySchema = z.object({
   userId: z.string(),
   search: z.string().optional(),
+  walletId: z.string().optional(),
+  categoryId: z.string().optional(),
+  dateFrom: z
+    .string()
+    .optional()
+    .transform((value) => (value ? new Date(value) : undefined)),
+  dateTo: z
+    .string()
+    .optional()
+    .transform((value) => (value ? new Date(value) : undefined)),
   limit: z
     .string()
     .optional()
@@ -222,6 +232,7 @@ const TripReimbursementLinkSchema = z.object({
   leftoverCategoryId: z.string().optional().nullable(),
   reimbursementBaseAmount: z.number().optional().nullable(),
   reimbursingFxRate: z.number().optional().nullable(),
+  syncToBankLedger: z.boolean().optional(),
 });
 
 const TripEntryClearLinkageSchema = z.object({
@@ -830,6 +841,12 @@ tripsRouter.get(
         query.limit || 20,
         query.offset || 0,
         query.excludeEntryId,
+        {
+          walletId: query.walletId,
+          categoryId: query.categoryId,
+          dateFrom: query.dateFrom,
+          dateTo: query.dateTo,
+        },
       );
       res.json(result);
     } catch (error: any) {
@@ -859,6 +876,9 @@ tripsRouter.post(
         {
           reimbursementBaseAmount: input.reimbursementBaseAmount ?? null,
           reimbursingFxRate: input.reimbursingFxRate ?? null,
+        },
+        {
+          syncToBankLedger: input.syncToBankLedger === true,
         },
       );
       res.json(result);

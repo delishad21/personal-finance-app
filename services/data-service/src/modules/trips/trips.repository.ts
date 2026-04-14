@@ -55,6 +55,78 @@ type TripEntryLinkage = {
 };
 
 export class TripRepository {
+  private static readonly FUNDING_REVIEW_STATES = [
+    "pending_review",
+    "linked_confirmed",
+    "external_confirmed",
+    "rejected",
+  ] as const;
+
+  private static isFundingReviewState(value: unknown): value is (typeof TripRepository.FUNDING_REVIEW_STATES)[number] {
+    return (
+      typeof value === "string" &&
+      (TripRepository.FUNDING_REVIEW_STATES as readonly string[]).includes(value)
+    );
+  }
+
+  private static getFundingReviewState(input: {
+    metadata: Record<string, unknown> | null | undefined;
+    sourceType: string;
+    bankTransactionId?: string | null;
+  }): (typeof TripRepository.FUNDING_REVIEW_STATES)[number] {
+    const metadata =
+      input.metadata && typeof input.metadata === "object"
+        ? (input.metadata as Record<string, unknown>)
+        : {};
+    const explicitState = metadata.matchReviewState;
+    if (TripRepository.isFundingReviewState(explicitState)) {
+      return explicitState;
+    }
+
+    const legacyStatus = String(metadata.matchReviewStatus || "").toLowerCase();
+    if (legacyStatus === "pending" || legacyStatus === "unmatched") {
+      return "pending_review";
+    }
+    if (legacyStatus === "accepted" || legacyStatus === "replaced") {
+      return "linked_confirmed";
+    }
+    if (legacyStatus === "confirmed") {
+      return input.bankTransactionId ? "linked_confirmed" : "external_confirmed";
+    }
+    if (legacyStatus === "rejected") {
+      return "rejected";
+    }
+
+    const sourceType = String(input.sourceType || "").toLowerCase();
+    if (sourceType === "imported_topup" || sourceType === "opening_balance") {
+      return "pending_review";
+    }
+    return input.bankTransactionId ? "linked_confirmed" : "external_confirmed";
+  }
+
+  private static setFundingReviewState(
+    metadata: Record<string, unknown>,
+    state: (typeof TripRepository.FUNDING_REVIEW_STATES)[number],
+    options?: { legacyStatus?: string },
+  ) {
+    metadata.matchReviewState = state;
+
+    if (options?.legacyStatus) {
+      metadata.matchReviewStatus = options.legacyStatus;
+      return;
+    }
+
+    if (state === "pending_review") {
+      metadata.matchReviewStatus = "pending";
+    } else if (state === "linked_confirmed") {
+      metadata.matchReviewStatus = "accepted";
+    } else if (state === "external_confirmed") {
+      metadata.matchReviewStatus = "confirmed";
+    } else if (state === "rejected") {
+      metadata.matchReviewStatus = "rejected";
+    }
+  }
+
   private static readonly WALLET_COLOR_PALETTE = [
     "#60a5fa",
     "#34d399",
@@ -847,6 +919,224 @@ export class TripRepository {
     `;
   }
 
+  private static async upsertFundingFromTripOutgoingTx(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    input: {
+      sourceTripId: string;
+      sourceTripName: string;
+      sourceEntryId: string;
+      sourceDate: Date;
+      sourceDescription: string;
+      sourceLabel: string | null;
+      destinationTripId: string;
+      destinationCurrency: string;
+      destinationAmount: number;
+      sourceCurrency: string;
+      sourceAmount: number;
+      fxRate: number;
+      baseAmount: number;
+      feeAmount?: number | null;
+      feeCurrency?: string | null;
+      sourceMetadata?: Record<string, unknown> | null;
+    },
+  ) {
+    const destinationCurrency = String(input.destinationCurrency || "").toUpperCase();
+    if (!destinationCurrency) return null;
+
+    const [destinationTrip] = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM trips
+      WHERE id = ${input.destinationTripId} AND user_id = ${userId}
+      LIMIT 1
+    `;
+    if (!destinationTrip) {
+      throw new Error("Destination trip not found or unauthorized.");
+    }
+
+    const [existingLinkedFunding] = await tx.$queryRaw<
+      Array<{ id: string; walletId: string | null }>
+    >`
+      SELECT
+        tf.id,
+        tf.wallet_id AS "walletId"
+      FROM trip_fundings tf
+      INNER JOIN trips t ON t.id = tf.trip_id
+      WHERE
+        tf.trip_id = ${input.destinationTripId}
+        AND tf.source_type = 'from_trip_outgoing'
+        AND COALESCE(tf.metadata->>'sourceTripEntryId', '') = ${input.sourceEntryId}
+        AND t.user_id = ${userId}
+      LIMIT 1
+    `;
+
+    let destinationWalletId = existingLinkedFunding?.walletId || null;
+    if (!destinationWalletId) {
+      const [existingWallet] = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id
+        FROM wallets
+        WHERE trip_id = ${input.destinationTripId} AND currency = ${destinationCurrency}
+        ORDER BY created_at ASC
+        LIMIT 1
+      `;
+      if (existingWallet) {
+        destinationWalletId = existingWallet.id;
+      } else {
+        const [createdWallet] = await tx.$queryRaw<Array<{ id: string }>>`
+          INSERT INTO wallets (
+            id,
+            trip_id,
+            name,
+            currency,
+            color,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            ${randomUUID()},
+            ${input.destinationTripId},
+            ${`Trip Transfer ${destinationCurrency}`},
+            ${destinationCurrency},
+            ${TripRepository.pickWalletColor(
+              `${input.destinationTripId}::Trip Transfer ${destinationCurrency}::${destinationCurrency}`,
+            )},
+            NOW(),
+            NOW()
+          )
+          RETURNING id
+        `;
+        destinationWalletId = createdWallet.id;
+      }
+    }
+
+    const baseMetadata = {
+      importedFromTripOutgoing: true,
+      sourceTripEntryId: input.sourceEntryId,
+      sourceTripId: input.sourceTripId,
+      sourceTripName: input.sourceTripName,
+      sourceTripDate: input.sourceDate,
+      sourceTripDescription: input.sourceDescription,
+      sourceTripLabel: input.sourceLabel,
+      sourceMetadata: input.sourceMetadata ?? null,
+      matchReviewState: "external_confirmed",
+      matchReviewStatus: "confirmed",
+      autoLinkedFromFundingOut: true,
+    } as Record<string, unknown>;
+
+    const fundingId = existingLinkedFunding?.id || randomUUID();
+    if (existingLinkedFunding) {
+      await tx.$executeRaw`
+        UPDATE trip_fundings
+        SET
+          wallet_id = ${destinationWalletId},
+          source_currency = ${input.sourceCurrency},
+          source_amount = ${input.sourceAmount},
+          destination_currency = ${destinationCurrency},
+          destination_amount = ${input.destinationAmount},
+          fx_rate = ${input.fxRate},
+          base_amount = ${input.baseAmount},
+          fee_amount = ${input.feeAmount ?? null},
+          fee_currency = ${input.feeCurrency ?? null},
+          metadata = ${baseMetadata as Prisma.InputJsonValue}
+        WHERE id = ${fundingId} AND trip_id = ${input.destinationTripId}
+      `;
+    } else {
+      await tx.$executeRaw`
+        INSERT INTO trip_fundings (
+          id,
+          trip_id,
+          wallet_id,
+          entry_id,
+          bank_transaction_id,
+          source_type,
+          source_currency,
+          source_amount,
+          destination_currency,
+          destination_amount,
+          fx_rate,
+          base_amount,
+          fee_amount,
+          fee_currency,
+          metadata,
+          created_at
+        )
+        VALUES (
+          ${fundingId},
+          ${input.destinationTripId},
+          ${destinationWalletId},
+          NULL,
+          NULL,
+          'from_trip_outgoing',
+          ${input.sourceCurrency},
+          ${input.sourceAmount},
+          ${destinationCurrency},
+          ${input.destinationAmount},
+          ${input.fxRate},
+          ${input.baseAmount},
+          ${input.feeAmount ?? null},
+          ${input.feeCurrency ?? null},
+          ${baseMetadata as Prisma.InputJsonValue},
+          NOW()
+        )
+      `;
+    }
+
+    await TripRepository.upsertFundingEntryTx(
+      tx,
+      userId,
+      input.destinationTripId,
+      fundingId,
+    );
+
+    return {
+      fundingId,
+      walletId: destinationWalletId,
+    };
+  }
+
+  private static async deleteLinkedFundingsFromTripOutgoingTx(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    sourceEntryIds: string[],
+  ) {
+    const uniqueSourceEntryIds = Array.from(new Set(sourceEntryIds.filter(Boolean)));
+    if (uniqueSourceEntryIds.length === 0) {
+      return [] as Array<{ tripId: string; walletId: string }>;
+    }
+
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; tripId: string; walletId: string | null }>
+    >`
+      SELECT
+        tf.id,
+        tf.trip_id AS "tripId",
+        tf.wallet_id AS "walletId"
+      FROM trip_fundings tf
+      INNER JOIN trips t ON t.id = tf.trip_id
+      WHERE
+        tf.source_type = 'from_trip_outgoing'
+        AND COALESCE(tf.metadata->>'sourceTripEntryId', '') IN (${Prisma.join(uniqueSourceEntryIds)})
+        AND t.user_id = ${userId}
+    `;
+
+    const recalcTargets = new Map<string, { tripId: string; walletId: string }>();
+    for (const row of rows) {
+      await TripRepository.deleteFundingEntryTx(tx, row.tripId, row.id);
+      await tx.$executeRaw`
+        DELETE FROM trip_fundings
+        WHERE id = ${row.id} AND trip_id = ${row.tripId}
+      `;
+      if (row.walletId) {
+        recalcTargets.set(`${row.tripId}:${row.walletId}`, {
+          tripId: row.tripId,
+          walletId: row.walletId,
+        });
+      }
+    }
+
+    return Array.from(recalcTargets.values());
+  }
+
   private static mapTrip(row: any) {
     return {
       id: row.id,
@@ -876,6 +1166,17 @@ export class TripRepository {
   }
 
   private static mapFunding(row: any) {
+    const metadata =
+      row.metadata && typeof row.metadata === "object"
+        ? ({ ...(row.metadata as Record<string, unknown>) } as Record<string, unknown>)
+        : ({} as Record<string, unknown>);
+    const reviewState = TripRepository.getFundingReviewState({
+      metadata,
+      sourceType: row.sourceType,
+      bankTransactionId: row.bankTransactionId,
+    });
+    TripRepository.setFundingReviewState(metadata, reviewState);
+
     return {
       id: row.id,
       tripId: row.tripId,
@@ -891,7 +1192,8 @@ export class TripRepository {
       baseAmount: row.baseAmount,
       feeAmount: row.feeAmount,
       feeCurrency: row.feeCurrency,
-      metadata: row.metadata,
+      metadata,
+      reviewState,
       createdAt: row.createdAt,
       wallet: row.walletId
         ? {
@@ -1149,8 +1451,125 @@ export class TripRepository {
     };
   }
 
+  private static async ensureMainReimbursementCategoryTx(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ) {
+    const [existing] = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM categories
+      WHERE user_id = ${userId} AND LOWER(name) = 'reimbursement'
+      LIMIT 1
+    `;
+    if (existing?.id) return existing.id;
+
+    const [created] = await tx.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO categories (
+        id,
+        user_id,
+        name,
+        color,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        ${randomUUID()},
+        ${userId},
+        ${"Reimbursement"},
+        ${"#22c55e"},
+        NOW(),
+        NOW()
+      )
+      RETURNING id
+    `;
+    return created.id;
+  }
+
+  private static async markMainTransactionAsTripReimbursementTx(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    bankTransactionId: string,
+    reimbursementAmount: number,
+    source: {
+      tripId: string;
+      tripEntryId: string;
+    },
+  ) {
+    const [transaction] = await tx.$queryRaw<
+      Array<{
+        id: string;
+        amountIn: unknown;
+        linkage: unknown;
+      }>
+    >`
+      SELECT
+        id,
+        amount_in AS "amountIn",
+        linkage
+      FROM transactions
+      WHERE id = ${bankTransactionId} AND user_id = ${userId}
+      LIMIT 1
+    `;
+    if (!transaction) return false;
+
+    const amountIn = Number(transaction.amountIn || 0);
+    if (!(amountIn > 0)) return false;
+
+    const existingLinkage =
+      transaction.linkage && typeof transaction.linkage === "object"
+        ? (transaction.linkage as Record<string, unknown>)
+        : null;
+
+    if (existingLinkage) {
+      const linkageType = String(existingLinkage.type || "");
+      const detectionReason = String(existingLinkage.detectionReason || "");
+      const hasManualAllocations =
+        linkageType === "reimbursement" &&
+        Array.isArray(existingLinkage.reimbursesAllocations) &&
+        (existingLinkage.reimbursesAllocations as unknown[]).length > 0;
+      const isTripSync = detectionReason === "trip_sync";
+
+      if (
+        linkageType === "internal" ||
+        linkageType === "reimbursed" ||
+        hasManualAllocations ||
+        (linkageType === "reimbursement" && !isTripSync && !hasManualAllocations)
+      ) {
+        return false;
+      }
+    }
+
+    const reimbursementCategoryId = await TripRepository.ensureMainReimbursementCategoryTx(
+      tx,
+      userId,
+    );
+    const linkagePayload = {
+      type: "reimbursement",
+      reimbursesAllocations: [],
+      leftoverAmount: reimbursementAmount,
+      leftoverCategoryId: null,
+      autoDetected: false,
+      detectionReason: "trip_sync",
+      tripSync: {
+        tripId: source.tripId,
+        tripEntryId: source.tripEntryId,
+      },
+    } as Prisma.InputJsonValue;
+
+    await tx.$executeRaw`
+      UPDATE transactions
+      SET
+        category_id = ${reimbursementCategoryId},
+        linkage = ${linkagePayload},
+        updated_at = NOW()
+      WHERE id = ${bankTransactionId} AND user_id = ${userId}
+    `;
+    return true;
+  }
+
   private static async applyTripReimbursementAllocations(
     tx: Prisma.TransactionClient,
+    userId: string,
     tripId: string,
     reimbursementEntryId: string,
     allocations: Array<{ transactionId: string; amountBase: number }>,
@@ -1158,6 +1577,9 @@ export class TripRepository {
     valuation?: {
       reimbursementBaseAmount?: number | null;
       reimbursingFxRate?: number | null;
+    },
+    options?: {
+      syncToBankLedger?: boolean;
     },
   ) {
     const [reimbursementRow] = await tx.$queryRaw<
@@ -1483,6 +1905,29 @@ export class TripRepository {
         SET metadata = ${targetMetadata as Prisma.InputJsonValue}
         WHERE id = ${targetId} AND trip_id = ${tripId}
       `;
+    }
+
+    if (options?.syncToBankLedger) {
+      const [sourceRow] = await tx.$queryRaw<
+        Array<{ sourceTransactionId: string | null }>
+      >`
+        SELECT source_transaction_id AS "sourceTransactionId"
+        FROM trip_entries
+        WHERE id = ${reimbursementEntryId} AND trip_id = ${tripId}
+        LIMIT 1
+      `;
+      if (sourceRow?.sourceTransactionId) {
+        await TripRepository.markMainTransactionAsTripReimbursementTx(
+          tx,
+          userId,
+          sourceRow.sourceTransactionId,
+          reimbursementLocalAmount,
+          {
+            tripId,
+            tripEntryId: reimbursementEntryId,
+          },
+        );
+      }
     }
   }
 
@@ -1822,10 +2267,12 @@ export class TripRepository {
       input.metadata && typeof input.metadata === "object"
         ? { ...(input.metadata as Record<string, unknown>) }
         : {};
-    if (typeof metadata.matchReviewStatus !== "string") {
-      metadata.matchReviewStatus =
-        input.sourceType === "imported_topup" ? "pending" : "confirmed";
-    }
+    const normalizedReviewState = TripRepository.getFundingReviewState({
+      metadata,
+      sourceType: input.sourceType,
+      bankTransactionId: input.bankTransactionId ?? null,
+    });
+    TripRepository.setFundingReviewState(metadata, normalizedReviewState);
 
     const normalized = TripRepository.normalizeFundingValues({
       sourceCurrency: bankTransactionCurrency || input.sourceCurrency,
@@ -1985,7 +2432,11 @@ export class TripRepository {
         throw new Error("Opening balance suggestions do not support replace linkage.");
       }
       nextBankTransactionId = null;
-      metadata.matchReviewStatus = input.action === "accept" ? "accepted" : "rejected";
+      TripRepository.setFundingReviewState(
+        metadata,
+        input.action === "accept" ? "external_confirmed" : "rejected",
+        { legacyStatus: input.action === "accept" ? "accepted" : "rejected" },
+      );
       metadata.matchReviewedAction = input.action;
     } else if (input.action === "accept") {
       const suggestedId =
@@ -1999,7 +2450,9 @@ export class TripRepository {
       await validateTransactionOwnership(selectedId);
       await ensureNotAlreadyLinked(selectedId);
       nextBankTransactionId = selectedId;
-      metadata.matchReviewStatus = "accepted";
+      TripRepository.setFundingReviewState(metadata, "linked_confirmed", {
+        legacyStatus: "accepted",
+      });
       metadata.matchReviewedAction = "accept";
     } else if (input.action === "replace") {
       if (!input.bankTransactionId) {
@@ -2008,12 +2461,23 @@ export class TripRepository {
       await validateTransactionOwnership(input.bankTransactionId);
       await ensureNotAlreadyLinked(input.bankTransactionId);
       nextBankTransactionId = input.bankTransactionId;
-      metadata.matchReviewStatus = "replaced";
+      TripRepository.setFundingReviewState(metadata, "linked_confirmed", {
+        legacyStatus: "replaced",
+      });
       metadata.matchReviewedAction = "replace";
       metadata.replacedBankTransactionId = input.bankTransactionId;
     } else {
       nextBankTransactionId = null;
-      metadata.matchReviewStatus = "rejected";
+      // For imported topups/opening balances, rejecting bank linkage means
+      // "treat as external/untracked funding source", not "discard funding".
+      const rejectState =
+        funding.sourceType === "imported_topup" ||
+        funding.sourceType === "opening_balance"
+          ? "external_confirmed"
+          : "rejected";
+      TripRepository.setFundingReviewState(metadata, rejectState, {
+        legacyStatus: rejectState === "external_confirmed" ? "confirmed" : "rejected",
+      });
       metadata.matchReviewedAction = "reject";
     }
 
@@ -2568,7 +3032,10 @@ export class TripRepository {
           AND tf.wallet_id = ${walletId}
           AND (
             tf.source_type NOT IN ('imported_topup', 'opening_balance')
-            OR COALESCE(tf.metadata->>'matchReviewStatus', '') IN ('accepted', 'replaced', 'confirmed')
+            OR (
+              COALESCE(tf.metadata->>'matchReviewState', '') <> 'rejected'
+              AND COALESCE(tf.metadata->>'matchReviewStatus', '') <> 'rejected'
+            )
           )
       `;
 
@@ -2666,9 +3133,9 @@ export class TripRepository {
     };
 
     const tripRows = await prisma.$queryRaw<
-      Array<{ id: string; baseCurrency: string }>
+      Array<{ id: string; name: string; baseCurrency: string }>
     >`
-      SELECT id, base_currency AS "baseCurrency"
+      SELECT id, name, base_currency AS "baseCurrency"
       FROM trips
       WHERE id = ${tripId} AND user_id = ${userId}
       LIMIT 1
@@ -2786,6 +3253,7 @@ export class TripRepository {
     let importedFees = 0;
     let handledRows = 0;
     const usedBankTransactionIds = new Set<string>();
+    const touchedWalletIds = new Map<string, { tripId: string; walletId: string }>();
     const selectedIndexToImportedEntryId = new Map<number, string>();
     const pendingReimbursementLinks: Array<{
       sourceIndex: number;
@@ -2924,6 +3392,7 @@ export class TripRepository {
             fundingId: string;
             transactionId: string;
             sourceType: string;
+            reviewState: string | null;
             reviewStatus: string | null;
             walletId: string | null;
             walletName: string | null;
@@ -2934,6 +3403,7 @@ export class TripRepository {
             tf.id AS "fundingId",
             tf.bank_transaction_id AS "transactionId",
             tf.source_type AS "sourceType",
+            tf.metadata->>'matchReviewState' AS "reviewState",
             tf.metadata->>'matchReviewStatus' AS "reviewStatus",
             tf.wallet_id AS "walletId",
             w.name AS "walletName",
@@ -2945,9 +3415,13 @@ export class TripRepository {
         `;
 
         const eligibleFundingRows = fundingRows.filter(
-          (row) =>
-            row.sourceType !== "imported_topup" ||
-            ["accepted", "replaced", "confirmed"].includes(row.reviewStatus || ""),
+          (row) => {
+            if (row.sourceType !== "imported_topup") return true;
+            if (row.reviewState) {
+              return row.reviewState === "linked_confirmed" || row.reviewState === "external_confirmed";
+            }
+            return ["accepted", "replaced", "confirmed"].includes(row.reviewStatus || "");
+          },
         );
         const fundingByTx = new Map<string, (typeof eligibleFundingRows)[number]>();
         eligibleFundingRows.forEach((row) => {
@@ -3016,13 +3490,20 @@ export class TripRepository {
               `Selected wallet currency ${selectedWalletCurrency} does not match imported row currency ${normalizedCurrency}.`,
             );
           }
+          touchedWalletIds.set(`${tripId}:${walletId}`, { tripId, walletId });
           return walletId;
         }
 
         const walletName = resolveWalletName(metadata, normalizedCurrency);
         const walletKey = `${walletName}::${normalizedCurrency}`;
         const cachedWalletId = walletKeyToId.get(walletKey);
-        if (cachedWalletId) return cachedWalletId;
+        if (cachedWalletId) {
+          touchedWalletIds.set(`${tripId}:${cachedWalletId}`, {
+            tripId,
+            walletId: cachedWalletId,
+          });
+          return cachedWalletId;
+        }
 
         const [existingWallet] = await tx.$queryRaw<Array<{ id: string }>>`
           SELECT id
@@ -3035,6 +3516,10 @@ export class TripRepository {
 
         if (existingWallet) {
           walletKeyToId.set(walletKey, existingWallet.id);
+          touchedWalletIds.set(`${tripId}:${existingWallet.id}`, {
+            tripId,
+            walletId: existingWallet.id,
+          });
           return existingWallet.id;
         }
 
@@ -3060,6 +3545,10 @@ export class TripRepository {
           RETURNING id
         `;
         walletKeyToId.set(walletKey, createdWallet.id);
+        touchedWalletIds.set(`${tripId}:${createdWallet.id}`, {
+          tripId,
+          walletId: createdWallet.id,
+        });
         return createdWallet.id;
       };
 
@@ -3107,7 +3596,10 @@ export class TripRepository {
             AND tf.wallet_id = ${targetWalletId}
             AND (
               tf.source_type NOT IN ('imported_topup', 'opening_balance')
-              OR COALESCE(tf.metadata->>'matchReviewStatus', '') IN ('accepted', 'replaced', 'confirmed')
+              OR (
+                COALESCE(tf.metadata->>'matchReviewState', '') <> 'rejected'
+                AND COALESCE(tf.metadata->>'matchReviewStatus', '') <> 'rejected'
+              )
             )
         `;
 
@@ -3362,6 +3854,7 @@ export class TripRepository {
           );
           const feeAmount = normalizedFundingOut.feeAmount;
           const feeCurrency = normalizedFundingOut.feeCurrency;
+          const entryId = randomUUID();
 
           await tx.$executeRaw`
             INSERT INTO trip_entries (
@@ -3386,7 +3879,7 @@ export class TripRepository {
               created_at
             )
             VALUES (
-              ${randomUUID()},
+              ${entryId},
               ${tripId},
               ${resolvedWalletId},
               'wallet_funding_out',
@@ -3423,6 +3916,46 @@ export class TripRepository {
               NOW()
             )
           `;
+
+          if (
+            normalizedFundingOut.destinationType === "trip" &&
+            normalizedFundingOut.destinationTripId
+          ) {
+            const downstream = await TripRepository.upsertFundingFromTripOutgoingTx(
+              tx,
+              userId,
+              {
+                sourceTripId: tripId,
+                sourceTripName: trip.name,
+                sourceEntryId: entryId,
+                sourceDate: new Date(transaction.date),
+                sourceDescription: transaction.description,
+                sourceLabel: transaction.label ?? null,
+                destinationTripId: normalizedFundingOut.destinationTripId,
+                destinationCurrency: normalizedFundingOut.destinationCurrency,
+                destinationAmount: normalizedFundingOut.destinationAmount,
+                sourceCurrency: localCurrency,
+                sourceAmount: localAmount,
+                fxRate: normalizedFundingOut.fxRate,
+                baseAmount: baseAmount,
+                feeAmount: normalizedFundingOut.feeAmount,
+                feeCurrency: normalizedFundingOut.feeCurrency,
+                sourceMetadata:
+                  metadata && typeof metadata === "object"
+                    ? (metadata as Record<string, unknown>)
+                    : null,
+              },
+            );
+            if (downstream?.walletId) {
+              touchedWalletIds.set(
+                `${normalizedFundingOut.destinationTripId}:${downstream.walletId}`,
+                {
+                  tripId: normalizedFundingOut.destinationTripId,
+                  walletId: downstream.walletId,
+                },
+              );
+            }
+          }
 
           handledRows += 1;
           continue;
@@ -3738,6 +4271,7 @@ export class TripRepository {
                   sourceWalletId: fromWalletId,
                   destinationWalletId: toWalletId,
                   transferType: "currency_conversion",
+                  matchReviewState: "external_confirmed",
                   matchReviewStatus: "confirmed",
                   originalDescription: transaction.description,
                   originalDate: transaction.date,
@@ -3914,6 +4448,7 @@ export class TripRepository {
                     outsideFundingList: resolvedCandidateMatches.outsideFundingList,
                     providerKeyword,
                   },
+                  matchReviewState: "pending_review",
                   matchReviewStatus: recommendedMatch?.id ? "pending" : "unmatched",
                   originalDescription: transaction.description,
                   originalDate: transaction.date,
@@ -4111,6 +4646,7 @@ export class TripRepository {
           if (resolvedAllocations.length === 0) continue;
           await TripRepository.applyTripReimbursementAllocations(
             tx,
+            userId,
             tripId,
             link.reimbursementEntryId,
             resolvedAllocations,
@@ -4187,6 +4723,7 @@ export class TripRepository {
               NULL,
               ${{
                 importedFromTripParser: true,
+                matchReviewState: "pending_review",
                 matchReviewStatus: "pending",
                 matchReviewedAction: null,
                 openingBalanceSuggestion: true,
@@ -4211,6 +4748,21 @@ export class TripRepository {
         }
       }
     });
+
+    if (touchedWalletIds.size > 0) {
+      await Promise.all(
+        Array.from(touchedWalletIds.values()).map((target) =>
+          TripRepository.recalculateWalletEntriesToBase(
+            userId,
+            target.tripId,
+            target.walletId,
+            {
+              mode: "weighted",
+            },
+          ).catch(() => null),
+        ),
+      );
+    }
 
     return {
       importedSpendings,
@@ -4386,8 +4938,8 @@ export class TripRepository {
     const cappedOffset = Math.max(0, offset);
     const query = search?.trim();
 
-    const [trip] = await prisma.$queryRaw<Array<{ id: string; baseCurrency: string }>>`
-      SELECT id, base_currency AS "baseCurrency"
+    const [trip] = await prisma.$queryRaw<Array<{ id: string; name: string; baseCurrency: string }>>`
+      SELECT id, name, base_currency AS "baseCurrency"
       FROM trips
       WHERE id = ${tripId} AND user_id = ${userId}
       LIMIT 1
@@ -4488,8 +5040,8 @@ export class TripRepository {
       throw new Error("No outgoing entries selected");
     }
 
-    const [trip] = await prisma.$queryRaw<Array<{ id: string; baseCurrency: string }>>`
-      SELECT id, base_currency AS "baseCurrency"
+    const [trip] = await prisma.$queryRaw<Array<{ id: string; name: string; baseCurrency: string }>>`
+      SELECT id, name, base_currency AS "baseCurrency"
       FROM trips
       WHERE id = ${tripId} AND user_id = ${userId}
       LIMIT 1
@@ -4646,6 +5198,7 @@ export class TripRepository {
               sourceTripDescription: source.description,
               sourceTripLabel: source.label,
               sourceMetadata,
+              matchReviewState: "external_confirmed",
               matchReviewStatus: "confirmed",
             } as Prisma.InputJsonValue},
             NOW()
@@ -4694,8 +5247,8 @@ export class TripRepository {
       throw new Error("No transactions selected");
     }
 
-    const [trip] = await prisma.$queryRaw<Array<{ id: string; baseCurrency: string }>>`
-      SELECT id, base_currency AS "baseCurrency"
+    const [trip] = await prisma.$queryRaw<Array<{ id: string; name: string; baseCurrency: string }>>`
+      SELECT id, name, base_currency AS "baseCurrency"
       FROM trips
       WHERE id = ${tripId} AND user_id = ${userId}
       LIMIT 1
@@ -4747,6 +5300,7 @@ export class TripRepository {
     `;
 
     let created = 0;
+    const touchedWallets = new Map<string, { tripId: string; walletId: string }>();
     await prisma.$transaction(async (tx) => {
       for (const source of sourceTransactions) {
         if (existing.has(source.id)) continue;
@@ -4887,9 +5441,59 @@ export class TripRepository {
           )
         `;
 
+        if (
+          resolvedType === "funding_out" &&
+          normalizedFundingOut?.destinationType === "trip" &&
+          normalizedFundingOut.destinationTripId
+        ) {
+          const downstream = await TripRepository.upsertFundingFromTripOutgoingTx(tx, userId, {
+            sourceTripId: tripId,
+            sourceTripName: trip.name,
+            sourceEntryId: entryId,
+            sourceDate: source.date,
+            sourceDescription: source.description,
+            sourceLabel: source.label ?? null,
+            destinationTripId: normalizedFundingOut.destinationTripId,
+            destinationCurrency: normalizedFundingOut.destinationCurrency,
+            destinationAmount: normalizedFundingOut.destinationAmount,
+            sourceCurrency: fundingOutSourceCurrency,
+            sourceAmount: fundingOutSourceAmount,
+            fxRate: normalizedFundingOut.fxRate,
+            baseAmount: baseAmount,
+            feeAmount: normalizedFundingOut.feeAmount,
+            feeCurrency: normalizedFundingOut.feeCurrency,
+            sourceMetadata:
+              metadataPayload && typeof metadataPayload === "object"
+                ? (metadataPayload as Record<string, unknown>)
+                : null,
+          });
+          if (downstream?.walletId) {
+            touchedWallets.set(
+              `${normalizedFundingOut.destinationTripId}:${downstream.walletId}`,
+              {
+                tripId: normalizedFundingOut.destinationTripId,
+                walletId: downstream.walletId,
+              },
+            );
+          }
+        }
+
         created += 1;
       }
     });
+
+    if (touchedWallets.size > 0) {
+      await Promise.all(
+        Array.from(touchedWallets.values()).map((item) =>
+          TripRepository.recalculateWalletEntriesToBase(
+            userId,
+            item.tripId,
+            item.walletId,
+            { mode: "weighted" },
+          ).catch(() => null),
+        ),
+      );
+    }
 
     return { created };
   }
@@ -4923,8 +5527,8 @@ export class TripRepository {
       metadata?: Prisma.InputJsonValue | null;
     },
   ) {
-    const [trip] = await prisma.$queryRaw<Array<{ id: string; baseCurrency: string }>>`
-      SELECT id, base_currency AS "baseCurrency"
+    const [trip] = await prisma.$queryRaw<Array<{ id: string; name: string; baseCurrency: string }>>`
+      SELECT id, name, base_currency AS "baseCurrency"
       FROM trips
       WHERE id = ${tripId} AND user_id = ${userId}
       LIMIT 1
@@ -5015,6 +5619,7 @@ export class TripRepository {
         : {}),
     } satisfies Record<string, unknown>;
 
+    const touchedWallets = new Map<string, { tripId: string; walletId: string }>();
     await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         INSERT INTO trip_entries (
@@ -5067,7 +5672,56 @@ export class TripRepository {
         )
       `;
 
+      if (input.walletId) {
+        touchedWallets.set(`${tripId}:${input.walletId}`, {
+          tripId,
+          walletId: input.walletId,
+        });
+      }
+
+      if (input.type === "funding_out" && normalizedFundingOut?.destinationType === "trip") {
+        const destinationTripId = normalizedFundingOut.destinationTripId;
+        if (destinationTripId) {
+          const downstream = await TripRepository.upsertFundingFromTripOutgoingTx(tx, userId, {
+            sourceTripId: tripId,
+            sourceTripName: trip.name,
+            sourceEntryId: id,
+            sourceDate: input.date,
+            sourceDescription: input.description,
+            sourceLabel: input.label ?? null,
+            destinationTripId,
+            destinationCurrency: normalizedFundingOut.destinationCurrency,
+            destinationAmount: normalizedFundingOut.destinationAmount,
+            sourceCurrency: String(input.localCurrency || "").toUpperCase(),
+            sourceAmount: Number(input.localAmount || 0),
+            fxRate: normalizedFundingOut.fxRate,
+            baseAmount: Number(input.baseAmount || 0),
+            feeAmount: normalizedFundingOut.feeAmount,
+            feeCurrency: normalizedFundingOut.feeCurrency,
+            sourceMetadata: metadataPayload,
+          });
+          if (downstream?.walletId) {
+            touchedWallets.set(`${destinationTripId}:${downstream.walletId}`, {
+              tripId: destinationTripId,
+              walletId: downstream.walletId,
+            });
+          }
+        }
+      }
     });
+
+    if (touchedWallets.size > 0) {
+      await Promise.all(
+        Array.from(touchedWallets.values()).map((item) =>
+          TripRepository.recalculateWalletEntriesToBase(
+            userId,
+            item.tripId,
+            item.walletId,
+            { mode: "weighted" },
+          ).catch(() => null),
+        ),
+      );
+    }
 
     return { id };
   }
@@ -5117,7 +5771,10 @@ export class TripRepository {
               WHEN te.type = 'funding_in' THEN
                 CASE
                   WHEN te.source_type IN ('funding_in_imported_topup', 'funding_in_opening_balance')
-                    AND COALESCE(te.metadata->>'matchReviewStatus', '') NOT IN ('accepted', 'replaced', 'confirmed')
+                    AND (
+                      COALESCE(te.metadata->>'matchReviewState', '') = 'rejected'
+                      OR COALESCE(te.metadata->>'matchReviewStatus', '') = 'rejected'
+                    )
                   THEN 0::numeric
                   ELSE te.local_amount
                 END
@@ -5164,7 +5821,10 @@ export class TripRepository {
           AND tf.wallet_id IS NOT NULL
           AND (
             tf.source_type NOT IN ('imported_topup', 'opening_balance')
-            OR COALESCE(tf.metadata->>'matchReviewStatus', '') IN ('accepted', 'replaced', 'confirmed')
+            OR (
+              COALESCE(tf.metadata->>'matchReviewState', '') <> 'rejected'
+              AND COALESCE(tf.metadata->>'matchReviewStatus', '') <> 'rejected'
+            )
           )
         GROUP BY tf.wallet_id
       `,
@@ -5425,6 +6085,12 @@ export class TripRepository {
     limit: number = 20,
     offset: number = 0,
     excludeEntryId?: string,
+    filters?: {
+      walletId?: string;
+      categoryId?: string;
+      dateFrom?: Date;
+      dateTo?: Date;
+    },
   ) {
     const safeLimit = Math.max(1, Math.min(limit, 100));
     const safeOffset = Math.max(0, offset);
@@ -5434,6 +6100,26 @@ export class TripRepository {
     ];
     if (excludeEntryId) {
       where.push(Prisma.sql`te.id <> ${excludeEntryId}`);
+    }
+    if (filters?.walletId) {
+      if (filters.walletId === "__no_wallet__") {
+        where.push(Prisma.sql`te.wallet_id IS NULL`);
+      } else {
+        where.push(Prisma.sql`te.wallet_id = ${filters.walletId}`);
+      }
+    }
+    if (filters?.categoryId) {
+      if (filters.categoryId === "__uncategorized__") {
+        where.push(Prisma.sql`te.category_id IS NULL`);
+      } else {
+        where.push(Prisma.sql`te.category_id = ${filters.categoryId}`);
+      }
+    }
+    if (filters?.dateFrom) {
+      where.push(Prisma.sql`te.transaction_date >= ${filters.dateFrom}`);
+    }
+    if (filters?.dateTo) {
+      where.push(Prisma.sql`te.transaction_date <= ${filters.dateTo}`);
     }
     const trimmedSearch = search?.trim();
     if (trimmedSearch) {
@@ -5453,7 +6139,13 @@ export class TripRepository {
           localAmount: unknown;
           localCurrency: string;
           baseAmount: unknown;
+          walletId: string | null;
           walletName: string | null;
+          walletCurrency: string | null;
+          walletColor: string | null;
+          categoryId: string | null;
+          categoryName: string | null;
+          categoryColor: string | null;
           allocatedBase: unknown;
         }>
       >`
@@ -5465,7 +6157,13 @@ export class TripRepository {
           te.local_amount AS "localAmount",
           te.local_currency AS "localCurrency",
           te.base_amount AS "baseAmount",
+          w.id AS "walletId",
           w.name AS "walletName",
+          w.currency AS "walletCurrency",
+          w.color AS "walletColor",
+          c.id AS "categoryId",
+          c.name AS "categoryName",
+          c.color AS "categoryColor",
           COALESCE((
             SELECT SUM(a.amount_base)
             FROM trip_reimbursement_allocations a
@@ -5474,6 +6172,7 @@ export class TripRepository {
         FROM trip_entries te
         INNER JOIN trips t ON t.id = te.trip_id
         LEFT JOIN wallets w ON w.id = te.wallet_id
+        LEFT JOIN categories c ON c.id = te.category_id
         WHERE ${Prisma.join(where, " AND ")} AND t.user_id = ${userId}
         ORDER BY te.transaction_date DESC
         LIMIT ${safeLimit} OFFSET ${safeOffset}
@@ -5502,7 +6201,21 @@ export class TripRepository {
           remainingBase: Number(
             Math.max(baseAmount - alreadyAllocatedBase, 0).toFixed(4),
           ),
-          walletName: row.walletName,
+          wallet: row.walletId
+            ? {
+                id: row.walletId,
+                name: row.walletName,
+                currency: row.walletCurrency,
+                color: row.walletColor,
+              }
+            : null,
+          category: row.categoryId
+            ? {
+                id: row.categoryId,
+                name: row.categoryName,
+                color: row.categoryColor,
+              }
+            : null,
         };
       }),
       total: Number(countRows[0]?.total || 0),
@@ -5521,6 +6234,9 @@ export class TripRepository {
       reimbursementBaseAmount?: number | null;
       reimbursingFxRate?: number | null;
     },
+    options?: {
+      syncToBankLedger?: boolean;
+    },
   ) {
     const [trip] = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id
@@ -5533,11 +6249,13 @@ export class TripRepository {
     await prisma.$transaction(async (tx) => {
       await TripRepository.applyTripReimbursementAllocations(
         tx,
+        userId,
         tripId,
         reimbursementEntryId,
         allocations,
         leftoverCategoryId ?? null,
         valuation,
+        options,
       );
     });
 
@@ -5790,15 +6508,40 @@ export class TripRepository {
     const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
     if (uniqueIds.length === 0) return { count: 0 };
 
-    const deletedCount = await prisma.$executeRaw`
-      DELETE FROM trip_entries te
-      USING trips t
-      WHERE
-        te.trip_id = t.id
-        AND t.user_id = ${userId}
-        AND te.trip_id = ${tripId}
-        AND te.id IN (${Prisma.join(uniqueIds)})
-    `;
+    let deletedCount = 0;
+    const recalcTargets = await prisma.$transaction(async (tx) => {
+      const linkedTargets = await TripRepository.deleteLinkedFundingsFromTripOutgoingTx(
+        tx,
+        userId,
+        uniqueIds,
+      );
+
+      deletedCount = Number(
+        await tx.$executeRaw`
+          DELETE FROM trip_entries te
+          USING trips t
+          WHERE
+            te.trip_id = t.id
+            AND t.user_id = ${userId}
+            AND te.trip_id = ${tripId}
+            AND te.id IN (${Prisma.join(uniqueIds)})
+        `,
+      );
+      return linkedTargets;
+    });
+
+    if (recalcTargets.length > 0) {
+      await Promise.all(
+        recalcTargets.map((target) =>
+          TripRepository.recalculateWalletEntriesToBase(
+            userId,
+            target.tripId,
+            target.walletId,
+            { mode: "weighted" },
+          ).catch(() => null),
+        ),
+      );
+    }
 
     return { count: Number(deletedCount) };
   }
@@ -5843,11 +6586,43 @@ export class TripRepository {
       where.push(Prisma.sql`te.id NOT IN (${Prisma.join(uniqueExcludeIds)})`);
     }
 
-    const deletedCount = await prisma.$executeRaw`
-      DELETE FROM trip_entries te
-      USING trips t
-      WHERE te.trip_id = t.id AND ${Prisma.join(where, " AND ")}
+    const candidateRows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT te.id
+      FROM trip_entries te
+      INNER JOIN trips t ON t.id = te.trip_id
+      WHERE ${Prisma.join(where, " AND ")}
     `;
+    const candidateIds = candidateRows.map((row) => row.id);
+
+    let deletedCount = 0;
+    const recalcTargets = await prisma.$transaction(async (tx) => {
+      const linkedTargets = await TripRepository.deleteLinkedFundingsFromTripOutgoingTx(
+        tx,
+        userId,
+        candidateIds,
+      );
+      deletedCount = Number(
+        await tx.$executeRaw`
+          DELETE FROM trip_entries te
+          USING trips t
+          WHERE te.trip_id = t.id AND ${Prisma.join(where, " AND ")}
+        `,
+      );
+      return linkedTargets;
+    });
+
+    if (recalcTargets.length > 0) {
+      await Promise.all(
+        recalcTargets.map((target) =>
+          TripRepository.recalculateWalletEntriesToBase(
+            userId,
+            target.tripId,
+            target.walletId,
+            { mode: "weighted" },
+          ).catch(() => null),
+        ),
+      );
+    }
 
     return { count: Number(deletedCount) };
   }
@@ -5874,6 +6649,9 @@ export class TripRepository {
       Array<{
         totalFunding: unknown;
         totalFundingIn: unknown;
+        totalLinkedFundingIn: unknown;
+        totalUnlinkedFundingIn: unknown;
+        totalUnlinkedFundingCount: unknown;
         totalFundingOut: unknown;
         totalSpent: unknown;
         totalReimbursed: unknown;
@@ -5888,7 +6666,10 @@ export class TripRepository {
             AND te.type = 'funding_in'
             AND (
               te.source_type NOT IN ('funding_in_imported_topup', 'funding_in_opening_balance')
-              OR COALESCE(te.metadata->>'matchReviewStatus', '') IN ('accepted', 'replaced', 'confirmed')
+              OR (
+                COALESCE(te.metadata->>'matchReviewState', '') <> 'rejected'
+                AND COALESCE(te.metadata->>'matchReviewStatus', '') <> 'rejected'
+              )
             )
         ), 0) AS "totalFunding",
         COALESCE((
@@ -5899,9 +6680,57 @@ export class TripRepository {
             AND te.type = 'funding_in'
             AND (
               te.source_type NOT IN ('funding_in_imported_topup', 'funding_in_opening_balance')
-              OR COALESCE(te.metadata->>'matchReviewStatus', '') IN ('accepted', 'replaced', 'confirmed')
+              OR (
+                COALESCE(te.metadata->>'matchReviewState', '') <> 'rejected'
+                AND COALESCE(te.metadata->>'matchReviewStatus', '') <> 'rejected'
+              )
             )
         ), 0) AS "totalFundingIn",
+        COALESCE((
+          SELECT SUM(te.base_amount)
+          FROM trip_entries te
+          WHERE
+            te.trip_id = ${tripId}
+            AND te.type = 'funding_in'
+            AND (
+              te.source_type NOT IN ('funding_in_imported_topup', 'funding_in_opening_balance')
+              OR (
+                COALESCE(te.metadata->>'matchReviewState', '') <> 'rejected'
+                AND COALESCE(te.metadata->>'matchReviewStatus', '') <> 'rejected'
+              )
+            )
+            AND COALESCE(te.metadata->>'bankTransactionId', '') <> ''
+        ), 0) AS "totalLinkedFundingIn",
+        COALESCE((
+          SELECT SUM(te.base_amount)
+          FROM trip_entries te
+          WHERE
+            te.trip_id = ${tripId}
+            AND te.type = 'funding_in'
+            AND (
+              te.source_type NOT IN ('funding_in_imported_topup', 'funding_in_opening_balance')
+              OR (
+                COALESCE(te.metadata->>'matchReviewState', '') <> 'rejected'
+                AND COALESCE(te.metadata->>'matchReviewStatus', '') <> 'rejected'
+              )
+            )
+            AND COALESCE(te.metadata->>'bankTransactionId', '') = ''
+        ), 0) AS "totalUnlinkedFundingIn",
+        COALESCE((
+          SELECT COUNT(*)::numeric
+          FROM trip_entries te
+          WHERE
+            te.trip_id = ${tripId}
+            AND te.type = 'funding_in'
+            AND (
+              te.source_type NOT IN ('funding_in_imported_topup', 'funding_in_opening_balance')
+              OR (
+                COALESCE(te.metadata->>'matchReviewState', '') <> 'rejected'
+                AND COALESCE(te.metadata->>'matchReviewStatus', '') <> 'rejected'
+              )
+            )
+            AND COALESCE(te.metadata->>'bankTransactionId', '') = ''
+        ), 0) AS "totalUnlinkedFundingCount",
         COALESCE((
           SELECT SUM(te.base_amount)
           FROM trip_entries te
@@ -6099,6 +6928,9 @@ export class TripRepository {
 
     const totalFunding = Number(totalsRow?.totalFunding || 0);
     const totalFundingIn = Number(totalsRow?.totalFundingIn || 0);
+    const totalLinkedFundingIn = Number(totalsRow?.totalLinkedFundingIn || 0);
+    const totalUnlinkedFundingIn = Number(totalsRow?.totalUnlinkedFundingIn || 0);
+    const totalUnlinkedFundingCount = Number(totalsRow?.totalUnlinkedFundingCount || 0);
     const totalFundingOut = Number(totalsRow?.totalFundingOut || 0);
     const totalSpent = Number(totalsRow?.totalSpent || 0);
     const totalReimbursed = Number(totalsRow?.totalReimbursed || 0);
@@ -6170,6 +7002,9 @@ export class TripRepository {
       totals: {
         totalFunding,
         totalFundingIn,
+        totalLinkedFundingIn,
+        totalUnlinkedFundingIn,
+        totalUnlinkedFundingCount,
         totalFundingOut,
         totalSpent,
         totalReimbursed,

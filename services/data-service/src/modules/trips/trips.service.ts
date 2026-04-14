@@ -193,6 +193,12 @@ export class TripService {
     limit: number = 20,
     offset: number = 0,
     excludeEntryId?: string,
+    filters?: {
+      walletId?: string;
+      categoryId?: string;
+      dateFrom?: Date;
+      dateTo?: Date;
+    },
   ) {
     return TripRepository.searchTripEntriesForReimbursement(
       userId,
@@ -201,6 +207,7 @@ export class TripService {
       limit,
       offset,
       excludeEntryId,
+      filters,
     );
   }
 
@@ -214,6 +221,9 @@ export class TripService {
       reimbursementBaseAmount?: number | null;
       reimbursingFxRate?: number | null;
     },
+    options?: {
+      syncToBankLedger?: boolean;
+    },
   ) {
     return TripRepository.createTripReimbursementLink(
       userId,
@@ -222,6 +232,7 @@ export class TripService {
       allocations,
       leftoverCategoryId ?? null,
       valuation,
+      options,
     );
   }
 
