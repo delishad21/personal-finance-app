@@ -32,6 +32,11 @@ export interface ImportRulePayload {
   sortOrder?: number;
 }
 
+export interface PaylahInternalPreferenceState {
+  shouldPrompt: boolean;
+  enabled: boolean;
+}
+
 export async function bootstrapDefaultImportRules() {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
@@ -141,4 +146,55 @@ export async function deleteImportRule(ruleId: string) {
   }
 
   return response.json();
+}
+
+export async function getPaylahInternalPreferenceState(): Promise<PaylahInternalPreferenceState> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+
+  const response = await fetch(
+    `${DATA_SERVICE_URL}/api/transactions/import-rules/paylah-internal-preference?userId=${session.user.id}`,
+    { cache: "no-store" },
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      error.error || "Failed to fetch PayLah internal preference state",
+    );
+  }
+
+  const data = await response.json();
+  return {
+    shouldPrompt: Boolean(data?.shouldPrompt),
+    enabled: Boolean(data?.enabled),
+  };
+}
+
+export async function setPaylahInternalPreference(enabled: boolean): Promise<{
+  enabled: boolean;
+  updatedCount: number;
+}> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+
+  const response = await fetch(
+    `${DATA_SERVICE_URL}/api/transactions/import-rules/paylah-internal-preference`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: session.user.id, enabled }),
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to save PayLah internal preference");
+  }
+
+  const data = await response.json();
+  return {
+    enabled: Boolean(data?.enabled),
+    updatedCount: Number(data?.updatedCount || 0),
+  };
 }

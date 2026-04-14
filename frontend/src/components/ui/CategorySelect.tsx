@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { HTMLAttributes } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { ChevronDown, Plus, Check, Lock } from "lucide-react";
+import { HoverTooltip } from "@/components/ui/HoverTooltip";
 
 interface Category {
   id: string;
@@ -22,6 +23,10 @@ interface CategorySelectProps {
   dropdownPlacement?: "fixed" | "inline";
   showOpenRing?: boolean;
   emptyLabel?: string;
+  suggestionMarker?: {
+    show: boolean;
+    tooltipContent?: ReactNode;
+  };
   triggerProps?: HTMLAttributes<HTMLButtonElement> & {
     [key: `data-${string}`]: string;
   };
@@ -39,6 +44,7 @@ export function CategorySelect({
   dropdownPlacement = "fixed",
   showOpenRing = true,
   emptyLabel = "Uncategorized",
+  suggestionMarker,
   triggerProps,
 }: CategorySelectProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -169,6 +175,16 @@ export function CategorySelect({
           <span className="flex-1 text-dark-5 dark:text-dark-6">
             {emptyLabel}
           </span>
+        )}
+        {suggestionMarker?.show && (
+          <HoverTooltip
+            content={suggestionMarker.tooltipContent || "Suggested category"}
+            align="end"
+          >
+            <span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-primary/50 bg-primary/10 text-xs font-bold leading-none text-primary">
+              *
+            </span>
+          </HoverTooltip>
         )}
         {lockedByLinkage ? (
           <Lock className="h-4 w-4 text-dark-5 dark:text-dark-6 ml-2 flex-shrink-0" />

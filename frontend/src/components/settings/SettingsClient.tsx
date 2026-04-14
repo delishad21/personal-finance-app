@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { TextInput } from "@/components/ui/TextInput";
 import { Button } from "@/components/ui/Button";
 import { Modal, type ModalType } from "@/components/ui/Modal";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { NumberInput } from "@/components/ui/NumberInput";
 import {
   User,
   Tags,
@@ -19,6 +21,7 @@ import { ManageImportRulesModal } from "@/components/settings/ManageImportRulesM
 import {
   updateUserProfile,
   changePassword,
+  updateAutoLabelSettings,
   type UserProfile,
 } from "@/app/actions/user";
 import {
@@ -57,6 +60,7 @@ export function SettingsClient({
   initialImportRules,
   parserOptions,
 }: SettingsClientProps) {
+  const PREVIEW_CHIP_LIMIT = 4;
   const tripCategoryNames = TRIP_CATEGORY_DEFINITIONS.map((item) => item.name);
 
   const [profile, setProfile] = useState<UserProfile | null>(user);
@@ -71,6 +75,12 @@ export function SettingsClient({
     next: "",
     confirm: "",
   });
+  const [autoLabelEnabled, setAutoLabelEnabled] = useState(
+    user?.autoLabelEnabled ?? false,
+  );
+  const [autoLabelThreshold, setAutoLabelThreshold] = useState(
+    user?.autoLabelThreshold ?? 0.5,
+  );
 
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
@@ -328,6 +338,49 @@ export function SettingsClient({
     }
   };
 
+  const handleSaveAutoLabelSettings = async () => {
+    try {
+      const updated = await updateAutoLabelSettings(
+        autoLabelEnabled,
+        autoLabelThreshold,
+      );
+      setAutoLabelEnabled(updated.autoLabelEnabled);
+      setAutoLabelThreshold(updated.autoLabelThreshold);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              autoLabelEnabled: updated.autoLabelEnabled,
+              autoLabelThreshold: updated.autoLabelThreshold,
+            }
+          : prev,
+      );
+      showModal("success", "Auto-labelling Saved", "Preferences updated.");
+    } catch (error) {
+      showModal(
+        "error",
+        "Save Failed",
+        error instanceof Error
+          ? error.message
+          : "Failed to save auto-labelling settings",
+      );
+    }
+  };
+
+  const baselineAutoLabelEnabled = profile?.autoLabelEnabled ?? false;
+  const baselineAutoLabelThreshold = profile?.autoLabelThreshold ?? 0.5;
+  const isAutoLabelDirty =
+    autoLabelEnabled !== baselineAutoLabelEnabled ||
+    Number(autoLabelThreshold.toFixed(4)) !==
+      Number(baselineAutoLabelThreshold.toFixed(4));
+
+  const categoryPreview = categories.slice(0, PREVIEW_CHIP_LIMIT);
+  const categoryRemaining = Math.max(categories.length - PREVIEW_CHIP_LIMIT, 0);
+  const accountPreview = accounts.slice(0, PREVIEW_CHIP_LIMIT);
+  const accountRemaining = Math.max(accounts.length - PREVIEW_CHIP_LIMIT, 0);
+  const rulePreview = importRules.slice(0, PREVIEW_CHIP_LIMIT);
+  const ruleRemaining = Math.max(importRules.length - PREVIEW_CHIP_LIMIT, 0);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -339,86 +392,82 @@ export function SettingsClient({
         </p>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card>
-          <CardHeader className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-primary/10 dark:bg-primary/20 text-primary flex items-center justify-center">
-                  <User className="h-5 w-5" />
-                </div>
-                <div>
-                  <CardTitle>Profile</CardTitle>
-                  <p className="text-sm text-dark-5 dark:text-dark-6 mt-1">
-                    Update your account details and credentials.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPasswordModalOpen(true)}
-                >
-                  Change Password
-                </Button>
-                <Button variant="primary" size="sm" onClick={handleProfileSave}>
-                  Save
-                </Button>
+      <Card>
+        <CardHeader className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <User className="h-6 w-6 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <CardTitle>Profile</CardTitle>
+                <p className="text-sm text-dark-5 dark:text-dark-6 mt-1">
+                  Update your account details and credentials.
+                </p>
               </div>
             </div>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
-                Full name
-              </label>
-              <TextInput
-                value={profile?.name || ""}
-                onChange={(e) =>
-                  setProfile((prev) =>
-                    prev ? { ...prev, name: e.target.value } : prev,
-                  )
-                }
-              />
+            <div className="flex items-center gap-2 lg:justify-end">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPasswordModalOpen(true)}
+              >
+                Change Password
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleProfileSave}>
+                Save
+              </Button>
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
-                Username
-              </label>
-              <TextInput
-                value={profile?.username || ""}
-                onChange={(e) =>
-                  setProfile((prev) =>
-                    prev ? { ...prev, username: e.target.value } : prev,
-                  )
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
-                Email address
-              </label>
-              <TextInput
-                value={profile?.email || ""}
-                onChange={(e) =>
-                  setProfile((prev) =>
-                    prev ? { ...prev, email: e.target.value } : prev,
-                  )
-                }
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
+              Full name
+            </label>
+            <TextInput
+              value={profile?.name || ""}
+              onChange={(e) =>
+                setProfile((prev) =>
+                  prev ? { ...prev, name: e.target.value } : prev,
+                )
+              }
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
+              Username
+            </label>
+            <TextInput
+              value={profile?.username || ""}
+              onChange={(e) =>
+                setProfile((prev) =>
+                  prev ? { ...prev, username: e.target.value } : prev,
+                )
+              }
+            />
+          </div>
+          <div className="flex flex-col gap-2 md:col-span-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
+              Email address
+            </label>
+            <TextInput
+              value={profile?.email || ""}
+              onChange={(e) =>
+                setProfile((prev) =>
+                  prev ? { ...prev, email: e.target.value } : prev,
+                )
+              }
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 xl:grid-cols-2">
 
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-blue-light-4 dark:bg-blue-dark/40 text-blue flex items-center justify-center">
-              <Settings2 className="h-5 w-5" />
-            </div>
-            <div>
+          <div className="flex items-center gap-3 min-w-0">
+            <Settings2 className="h-6 w-6 shrink-0 text-blue" />
+            <div className="min-w-0">
               <CardTitle>Preferences</CardTitle>
               <p className="text-sm text-dark-5 dark:text-dark-6 mt-1">
                 Manage categories and account identifiers.
@@ -426,14 +475,12 @@ export function SettingsClient({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-6 lg:grid-cols-2">
+        <CardContent className="space-y-4">
           <div className="rounded-lg border border-stroke dark:border-dark-3 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-full bg-orange-light-3 dark:bg-orange-dark-2/60 text-orange flex items-center justify-center">
-                  <Tags className="h-5 w-5" />
-                </div>
-                <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <Tags className="h-6 w-6 shrink-0 text-orange" />
+                <div className="min-w-0">
                   <h4 className="text-base font-semibold text-dark dark:text-white">
                     Categories
                   </h4>
@@ -450,35 +497,33 @@ export function SettingsClient({
                 Manage
               </Button>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2 text-sm text-dark-5 dark:text-dark-6">
-              {categories.slice(0, 6).map((category) => (
+            <div className="mt-4 flex max-h-[68px] flex-wrap gap-2 overflow-hidden text-sm text-dark-5 dark:text-dark-6">
+              {categoryPreview.map((category) => (
                 <span
                   key={category.id}
-                  className="inline-flex items-center gap-2 rounded-full border border-stroke dark:border-dark-3 px-3 py-1"
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-stroke px-3 py-1 dark:border-dark-3"
                 >
                   <span
                     className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: category.color }}
                   />
-                  {category.name}
+                  <span className="truncate">{category.name}</span>
                 </span>
               ))}
               {categories.length === 0 && <span>No categories yet.</span>}
-              {categories.length > 6 && (
-                <span className="text-dark-5 dark:text-dark-6">
-                  +{categories.length - 6} more
+              {categoryRemaining > 0 && (
+                <span className="inline-flex items-center rounded-full border border-stroke px-3 py-1 dark:border-dark-3">
+                  +{categoryRemaining} more
                 </span>
               )}
             </div>
           </div>
 
           <div className="rounded-lg border border-stroke dark:border-dark-3 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-full bg-green-light-5 dark:bg-green-dark/40 text-green flex items-center justify-center">
-                  <WalletCards className="h-5 w-5" />
-                </div>
-                <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <WalletCards className="h-6 w-6 shrink-0 text-green" />
+                <div className="min-w-0">
                   <h4 className="text-base font-semibold text-dark dark:text-white">
                     Account Identifiers
                   </h4>
@@ -495,23 +540,23 @@ export function SettingsClient({
                 Manage
               </Button>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2 text-sm text-dark-5 dark:text-dark-6">
-              {accounts.slice(0, 6).map((account) => (
+            <div className="mt-4 flex max-h-[68px] flex-wrap gap-2 overflow-hidden text-sm text-dark-5 dark:text-dark-6">
+              {accountPreview.map((account) => (
                 <span
                   key={account.id}
-                  className="inline-flex items-center gap-2 rounded-full border border-stroke dark:border-dark-3 px-3 py-1"
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-stroke px-3 py-1 dark:border-dark-3"
                 >
                   <span
                     className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: account.color }}
                   />
-                  {account.accountIdentifier}
+                  <span className="truncate">{account.accountIdentifier}</span>
                 </span>
               ))}
               {accounts.length === 0 && <span>No accounts yet.</span>}
-              {accounts.length > 6 && (
-                <span className="text-dark-5 dark:text-dark-6">
-                  +{accounts.length - 6} more
+              {accountRemaining > 0 && (
+                <span className="inline-flex items-center rounded-full border border-stroke px-3 py-1 dark:border-dark-3">
+                  +{accountRemaining} more
                 </span>
               )}
             </div>
@@ -521,39 +566,108 @@ export function SettingsClient({
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary/15 dark:bg-primary/25 text-primary flex items-center justify-center">
-                <WandSparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <CardTitle>Import Rules</CardTitle>
-                <p className="text-sm text-dark-5 dark:text-dark-6 mt-1">
-                  Auto-label, auto-categorize, and auto-mark imports.
-                </p>
-              </div>
+          <div className="flex items-center gap-3 min-w-0">
+            <WandSparkles className="h-6 w-6 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <CardTitle>Import Rules</CardTitle>
+              <p className="text-sm text-dark-5 dark:text-dark-6 mt-1">
+                Auto-label, auto-categorize, and auto-mark imports.
+              </p>
             </div>
-            <Button variant="primary" size="sm" onClick={() => setManageRulesOpen(true)}>
-              Manage Rules
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-2 text-sm text-dark-5 dark:text-dark-6">
-            {importRules.slice(0, 4).map((rule) => (
-              <span
-                key={rule.id}
-                className="inline-flex items-center gap-2 rounded-full border border-stroke dark:border-dark-3 px-3 py-1"
+          <div className="rounded-lg border border-stroke px-4 py-3 dark:border-dark-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h4 className="text-sm font-semibold text-dark dark:text-white">
+                  Fixed Rules
+                </h4>
+                <p className="text-xs text-dark-5 dark:text-dark-6 mt-1">
+                  Add and maintain parser-specific matching rules.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setManageRulesOpen(true)}
               >
-                <span className="h-2 w-2 rounded-full bg-primary" />
-                {rule.name}
-              </span>
-            ))}
-            {importRules.length === 0 && <span>No import rules yet.</span>}
-            {importRules.length > 4 && <span>+{importRules.length - 4} more</span>}
+                Manage Rules
+              </Button>
+            </div>
+            <div className="mt-3 flex max-h-[68px] flex-wrap gap-2 overflow-hidden text-sm text-dark-5 dark:text-dark-6">
+              {rulePreview.map((rule) => (
+                <span
+                  key={rule.id}
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-stroke px-3 py-1 dark:border-dark-3"
+                >
+                  <span className="h-2 w-2 rounded-full bg-primary" />
+                  <span className="truncate">{rule.name}</span>
+                </span>
+              ))}
+              {importRules.length === 0 && <span>No import rules yet.</span>}
+              {ruleRemaining > 0 && (
+                <span className="inline-flex items-center rounded-full border border-stroke px-3 py-1 dark:border-dark-3">
+                  +{ruleRemaining} more
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-stroke px-4 py-3 dark:border-dark-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-2">
+                <h4 className="text-sm font-semibold text-dark dark:text-white">
+                  Auto-labelling
+                </h4>
+                <span className="rounded-full border border-orange/50 bg-orange/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-orange">
+                  Experimental
+                </span>
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-sm text-dark dark:text-white">
+                <Checkbox
+                  checked={autoLabelEnabled}
+                  onChange={(checked) => setAutoLabelEnabled(checked)}
+                />
+                Enable
+              </label>
+
+              {autoLabelEnabled ? (
+                <div className="inline-flex items-center gap-2 text-sm">
+                  <span className="text-dark-5 dark:text-dark-6">Threshold</span>
+                  <NumberInput
+                    value={autoLabelThreshold}
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      setAutoLabelThreshold(Number.isFinite(value) ? value : 0.5);
+                    }}
+                    className="w-[120px]"
+                    inputClassName="w-full"
+                  />
+                </div>
+              ) : null}
+
+              <div className="ml-auto">
+                <Button
+                  variant={
+                    isAutoLabelDirty && autoLabelEnabled ? "success" : "secondary"
+                  }
+                  size="sm"
+                  onClick={handleSaveAutoLabelSettings}
+                  disabled={!isAutoLabelDirty}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
+      </div>
 
       <ManageCategoriesModal
         isOpen={manageCategoriesOpen}

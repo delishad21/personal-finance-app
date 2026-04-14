@@ -237,6 +237,52 @@ transactionRouter.post(
 );
 
 /**
+ * GET /api/transactions/import-rules/paylah-internal-preference
+ * Get PayLah internal auto-marking preference and prompt state
+ */
+transactionRouter.get(
+  "/import-rules/paylah-internal-preference",
+  async (req: Request, res: Response) => {
+    try {
+      const userId = String(req.query.userId || "");
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      const state = await TransactionService.getPaylahInternalPreferenceState(
+        userId,
+      );
+      res.json(state);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
+ * POST /api/transactions/import-rules/paylah-internal-preference
+ * Save PayLah internal auto-marking preference
+ */
+transactionRouter.post(
+  "/import-rules/paylah-internal-preference",
+  async (req: Request, res: Response) => {
+    try {
+      const userId = String(req.body?.userId || "");
+      const enabled = Boolean(req.body?.enabled);
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      const result = await TransactionService.setPaylahInternalPreference(
+        userId,
+        enabled,
+      );
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+);
+
+/**
  * GET /api/transactions/import-rules
  * Get import rules
  */
@@ -578,6 +624,18 @@ transactionRouter.get(
       const offset = req.query.offset
         ? parseInt(req.query.offset as string)
         : 0;
+      const transactionType = req.query.transactionType
+        ? String(req.query.transactionType)
+        : undefined;
+      const categoryId = req.query.categoryId
+        ? String(req.query.categoryId)
+        : undefined;
+      const dateFrom = req.query.dateFrom
+        ? new Date(String(req.query.dateFrom))
+        : undefined;
+      const dateTo = req.query.dateTo
+        ? new Date(String(req.query.dateTo))
+        : undefined;
 
       if (!userId) {
         return res.status(400).json({ error: "userId is required" });
@@ -588,6 +646,16 @@ transactionRouter.get(
         query,
         limit,
         offset,
+        {
+          transactionType:
+            transactionType === "in" || transactionType === "out"
+              ? transactionType
+              : undefined,
+          categoryId,
+          dateFrom:
+            dateFrom && !Number.isNaN(dateFrom.getTime()) ? dateFrom : undefined,
+          dateTo: dateTo && !Number.isNaN(dateTo.getTime()) ? dateTo : undefined,
+        },
       );
 
       res.json(results);

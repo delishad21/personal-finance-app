@@ -19,6 +19,7 @@ export interface TransactionLinkage {
   leftoverCategoryId?: string | null;
   reimbursementBaseAmount?: number;
   reimbursingFxRate?: number;
+  syncToBankLedger?: boolean;
   autoDetected?: boolean; // True if parser detected
   detectionReason?: string; // Why it was detected
 }
@@ -39,6 +40,12 @@ export interface Transaction {
     | "funding_out"
     | "funding_in";
   linkage?: TransactionLinkage | null;
+  suggestedCategoryId?: string;
+  suggestedLabel?: string;
+  suggestedInternal?: boolean;
+  suggestionSource?: "rule" | "history" | "heuristic";
+  suggestionConfidence?: number;
+  suggestionApplied?: boolean;
   metadata: Record<string, any>;
 }
 
@@ -111,6 +118,7 @@ export interface TransactionTableProps {
   amountInHeader?: string;
   amountOutHeader?: string;
   deferCellCommit?: boolean;
+  lockLinkedReimbursements?: boolean;
   renderExpandedActions?: (
     index: number,
     transaction: Transaction,

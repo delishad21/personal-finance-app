@@ -10,6 +10,8 @@ export interface UserProfile {
   username: string;
   email: string | null;
   baseCurrency: string;
+  autoLabelEnabled: boolean;
+  autoLabelThreshold: number;
 }
 
 export async function getCurrentUser(): Promise<UserProfile | null> {
@@ -28,6 +30,8 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
       settings: {
         select: {
           currency: true,
+          autoLabelEnabled: true,
+          autoLabelThreshold: true,
         },
       },
     },
@@ -40,11 +44,13 @@ export async function getCurrentUser(): Promise<UserProfile | null> {
     username: user.username,
     email: user.email,
     baseCurrency: user.settings?.currency || "SGD",
+    autoLabelEnabled: user.settings?.autoLabelEnabled ?? false,
+    autoLabelThreshold: Number(user.settings?.autoLabelThreshold ?? 0.5),
   };
 }
 
 export async function updateUserProfile(
-  data: Omit<UserProfile, "id" | "baseCurrency">,
+  data: Pick<UserProfile, "name" | "username" | "email">,
 ): Promise<UserProfile> {
   const session = await auth();
   if (!session?.user?.id) {
@@ -92,6 +98,8 @@ export async function updateUserProfile(
       settings: {
         select: {
           currency: true,
+          autoLabelEnabled: true,
+          autoLabelThreshold: true,
         },
       },
     },
@@ -102,6 +110,44 @@ export async function updateUserProfile(
     username: user.username,
     email: user.email,
     baseCurrency: user.settings?.currency || "SGD",
+    autoLabelEnabled: user.settings?.autoLabelEnabled ?? false,
+    autoLabelThreshold: Number(user.settings?.autoLabelThreshold ?? 0.5),
+  };
+}
+
+export async function updateAutoLabelSettings(
+  autoLabelEnabled: boolean,
+  autoLabelThreshold: number,
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Not authenticated");
+  }
+
+  const normalizedThreshold = Number(
+    Math.min(1, Math.max(0, Number(autoLabelThreshold || 0.5))).toFixed(2),
+  );
+
+  const settings = await prisma.userSettings.upsert({
+    where: { userId: session.user.id },
+    create: {
+      userId: session.user.id,
+      autoLabelEnabled,
+      autoLabelThreshold: normalizedThreshold,
+    },
+    update: {
+      autoLabelEnabled,
+      autoLabelThreshold: normalizedThreshold,
+    },
+    select: {
+      autoLabelEnabled: true,
+      autoLabelThreshold: true,
+    },
+  });
+
+  return {
+    autoLabelEnabled: settings.autoLabelEnabled,
+    autoLabelThreshold: Number(settings.autoLabelThreshold),
   };
 }
 

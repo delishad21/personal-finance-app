@@ -48,6 +48,8 @@ export async function POST(request: NextRequest) {
           create: {
             theme: "light",
             currency: baseCurrency,
+            autoLabelEnabled: false,
+            autoLabelThreshold: 0.5,
             dateFormat: "MM/dd/yyyy",
             defaultTimeframe: "month",
           },

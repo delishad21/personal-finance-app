@@ -581,10 +581,37 @@ export class TransactionRepository {
     query: string | undefined,
     limit: number = 20,
     offset: number = 0,
+    filters?: {
+      transactionType?: "in" | "out";
+      categoryId?: string;
+      dateFrom?: Date;
+      dateTo?: Date;
+    },
   ) {
     const trimmed = query?.trim();
     const where: Prisma.TransactionWhereInput = {
       userId,
+      ...(filters?.categoryId
+        ? {
+            categoryId:
+              filters.categoryId === "__uncategorized__"
+                ? null
+                : filters.categoryId,
+          }
+        : {}),
+      ...(filters?.transactionType === "in"
+        ? { amountIn: { gt: 0 } }
+        : filters?.transactionType === "out"
+          ? { amountOut: { gt: 0 } }
+          : {}),
+      ...(filters?.dateFrom || filters?.dateTo
+        ? {
+            date: {
+              ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+              ...(filters.dateTo ? { lte: filters.dateTo } : {}),
+            },
+          }
+        : {}),
       ...(trimmed
         ? {
             OR: [

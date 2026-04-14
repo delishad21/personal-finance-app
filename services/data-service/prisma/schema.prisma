@@ -77,6 +77,10 @@ model UserSettings {
   userId           String   @unique @map("user_id")
   theme            String   @default("light") // light or dark
   currency         String   @default("SGD")
+  autoLabelEnabled Boolean  @default(false) @map("auto_label_enabled")
+  autoLabelThreshold Decimal @default(0.5) @map("auto_label_threshold") @db.Decimal(4, 2)
+  paylahInternalPrompted Boolean @default(false) @map("paylah_internal_prompted")
+  paylahAutoInternal Boolean @default(false) @map("paylah_auto_internal")
   dateFormat       String   @default("MM/dd/yyyy")
   defaultTimeframe String   @default("month") @map("default_timeframe")
   createdAt        DateTime @default(now()) @map("created_at")

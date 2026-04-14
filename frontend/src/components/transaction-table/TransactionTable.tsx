@@ -3,8 +3,8 @@
 import { useState, Fragment, useRef, useCallback, useEffect, memo } from "react";
 import type { KeyboardEvent, FormEvent } from "react";
 import {
-  ArrowLeft,
-  ArrowLeftToLine,
+  ArrowRight,
+  ArrowRightToLine,
   ChevronRight,
   ChevronDown,
   Filter,
@@ -15,6 +15,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Select } from "@/components/ui/Select";
+import { HoverTooltip } from "@/components/ui/HoverTooltip";
 import { ResizableHeader } from "./ResizableHeader";
 import { TransactionTableToolbar } from "./TransactionTableToolbar";
 import { DuplicateWarningBanner } from "./DuplicateWarningBanner";
@@ -118,7 +119,7 @@ interface DeferredTextareaProps {
   className: string;
   dataRow: string;
   dataCol: string;
-  onInput: (event: FormEvent<HTMLTextAreaElement>) => void;
+  onInput?: (event: FormEvent<HTMLTextAreaElement>) => void;
   onCommit: (value: string) => void;
 }
 
@@ -187,6 +188,7 @@ export function TransactionTable({
   amountInHeader = "In",
   amountOutHeader = "Out",
   deferCellCommit = false,
+  lockLinkedReimbursements = true,
   renderExpandedActions,
   reviewActionLeft,
 }: TransactionTableProps) {
@@ -196,6 +198,9 @@ export function TransactionTable({
   const [tableCategoryFilter, setTableCategoryFilter] = useState("");
   const [tableTypeFilter, setTableTypeFilter] = useState<
     "all" | "in" | "out"
+  >("all");
+  const [tableSuggestionFilter, setTableSuggestionFilter] = useState<
+    "all" | "suggested" | "auto" | "unresolved"
   >("all");
   const [tableDateFrom, setTableDateFrom] = useState("");
   const [tableDateTo, setTableDateTo] = useState("");
@@ -268,21 +273,52 @@ export function TransactionTable({
     [],
   );
 
-  useEffect(() => {
+  const resizeVisibleDescriptionRows = useCallback(() => {
     const container = tableContainerRef.current;
     if (!container) return;
-    const resizeAll = () => {
-      const textareas = container.querySelectorAll<HTMLTextAreaElement>(
-        'textarea[data-col="description"]',
-      );
-      textareas.forEach((el) => {
-        el.style.height = "0px";
-        el.style.height = `${el.scrollHeight}px`;
-      });
-    };
-    const raf = requestAnimationFrame(resizeAll);
+    const textareas = container.querySelectorAll<HTMLTextAreaElement>(
+      'textarea[data-col="description"]',
+    );
+    textareas.forEach((el) => {
+      el.style.height = "0px";
+      el.style.height = `${el.scrollHeight}px`;
+    });
+  }, []);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(resizeVisibleDescriptionRows);
     return () => cancelAnimationFrame(raf);
-  }, [transactions.length, showDuplicatesOnly]);
+  }, [
+    resizeVisibleDescriptionRows,
+    transactions.length,
+    showDuplicatesOnly,
+    tableSearch,
+    tableCategoryFilter,
+    tableTypeFilter,
+    tableSuggestionFilter,
+    tableDateFrom,
+    tableDateTo,
+  ]);
+
+  useEffect(() => {
+    const triggerResize = () => {
+      requestAnimationFrame(resizeVisibleDescriptionRows);
+    };
+
+    window.addEventListener("resize", triggerResize);
+
+    const container = tableContainerRef.current;
+    let observer: ResizeObserver | null = null;
+    if (container && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(triggerResize);
+      observer.observe(container);
+    }
+
+    return () => {
+      window.removeEventListener("resize", triggerResize);
+      observer?.disconnect();
+    };
+  }, [resizeVisibleDescriptionRows]);
 
   const baseVisibleRows = transactions
     .map((transaction, index) => ({ transaction, index }))
@@ -307,6 +343,20 @@ export function TransactionTable({
       (tableTypeFilter === "in" && amountIn > 0) ||
       (tableTypeFilter === "out" && amountOut > 0);
 
+    const hasSuggestion =
+      !!transaction.suggestionSource &&
+      Number(transaction.suggestionConfidence || 0) > 0;
+    const isAutoApplied = transaction.suggestionApplied === true;
+    const matchesSuggestion =
+      tableSuggestionFilter === "all" ||
+      (tableSuggestionFilter === "suggested" && hasSuggestion) ||
+      (tableSuggestionFilter === "auto" && isAutoApplied) ||
+      (tableSuggestionFilter === "unresolved" &&
+        !isAutoApplied &&
+        !transaction.categoryId &&
+        !transaction.label &&
+        !transaction.linkage);
+
     const txDate = transaction.date || "";
     const matchesDateFrom = !tableDateFrom || txDate >= tableDateFrom;
     const matchesDateTo = !tableDateTo || txDate <= tableDateTo;
@@ -315,6 +365,7 @@ export function TransactionTable({
       matchesSearch &&
       matchesCategory &&
       matchesType &&
+      matchesSuggestion &&
       matchesDateFrom &&
       matchesDateTo
     );
@@ -508,6 +559,23 @@ export function TransactionTable({
                         buttonClassName="w-full"
                         menuPlacement="down"
                       />
+                      <Select
+                        value={tableSuggestionFilter}
+                        onChange={(value) =>
+                          setTableSuggestionFilter(
+                            value as "all" | "suggested" | "auto" | "unresolved",
+                          )
+                        }
+                        options={[
+                          { value: "all", label: "All suggestion states" },
+                          { value: "suggested", label: "Suggested" },
+                          { value: "auto", label: "Auto-applied" },
+                          { value: "unresolved", label: "Unresolved" },
+                        ]}
+                        className="w-full"
+                        buttonClassName="w-full"
+                        menuPlacement="down"
+                      />
                       <button
                         type="button"
                         className="text-xs text-primary hover:underline"
@@ -515,6 +583,7 @@ export function TransactionTable({
                           setTableSearch("");
                           setTableCategoryFilter("");
                           setTableTypeFilter("all");
+                          setTableSuggestionFilter("all");
                           setTableDateFrom("");
                           setTableDateTo("");
                         }}
@@ -539,7 +608,18 @@ export function TransactionTable({
                 minWidth={MIN_COLUMN_WIDTHS.description}
                 onResizeStart={handleResizeStart}
               >
-                Description
+                <div className="flex items-center justify-between gap-2">
+                  <span>Description</span>
+                  {!showDuplicatesOnly && (
+                    <button
+                      onClick={handleCopyAllDescriptionsToLabels}
+                      className="p-1 hover:bg-gray-2 dark:hover:bg-dark-3 rounded transition-colors"
+                      title="Copy all descriptions to labels"
+                    >
+                      <ArrowRightToLine className="h-3.5 w-3.5 text-primary" />
+                    </button>
+                  )}
+                </div>
               </ResizableHeader>
               <ResizableHeader
                 columnKey="label"
@@ -547,18 +627,7 @@ export function TransactionTable({
                 minWidth={MIN_COLUMN_WIDTHS.label}
                 onResizeStart={handleResizeStart}
               >
-                <div className="flex items-center gap-2">
-                  Label
-                  {!showDuplicatesOnly && (
-                    <button
-                      onClick={handleCopyAllDescriptionsToLabels}
-                      className="p-1 hover:bg-gray-2 dark:hover:bg-dark-3 rounded transition-colors"
-                      title="Copy all descriptions to labels"
-                    >
-                      <ArrowLeftToLine className="h-3.5 w-3.5 text-primary" />
-                    </button>
-                  )}
-                </div>
+                Label
               </ResizableHeader>
               <ResizableHeader
                 columnKey="category"
@@ -615,7 +684,75 @@ export function TransactionTable({
                     ? reimbursementCategoryId
                     : isFundingInTopup
                       ? "__funding_in__"
-                    : transaction.categoryId;
+                      : transaction.categoryId;
+              const isReimbursementLinkage =
+                linkageType === "reimbursement" || linkageType === "reimbursed";
+              const isLockedByLinkage =
+                !!linkageType &&
+                (!isReimbursementLinkage || lockLinkedReimbursements);
+              const hasSuggestionMetadata = !!transaction.suggestionSource;
+              const suggestionConfidencePct = Math.round(
+                Number(transaction.suggestionConfidence || 0) * 100,
+              );
+              const suggestionReason = String(
+                (transaction.metadata as Record<string, unknown>)?.suggestionReason || "",
+              ).trim();
+              const labelMatchesSuggestion =
+                !!transaction.suggestedLabel &&
+                String(transaction.label || "").trim().toLowerCase() ===
+                  String(transaction.suggestedLabel || "")
+                    .trim()
+                    .toLowerCase();
+              const categoryMatchesSuggestion =
+                !!transaction.suggestedCategoryId &&
+                String(displayCategoryId || "") ===
+                  String(transaction.suggestedCategoryId || "");
+              const suggestionTooltipBlock = (
+                fieldLabel: "Label" | "Category",
+                suggestedValue?: string,
+              ) => (
+                <div className="space-y-1">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+                    Suggested
+                  </div>
+                  {hasSuggestionMetadata && (
+                    <>
+                      <div>
+                        <span className="text-dark-6">Source:</span>{" "}
+                        <span className="font-medium text-white">
+                          {transaction.suggestionSource}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-dark-6">Confidence:</span>{" "}
+                        <span className="font-medium text-white">
+                          {suggestionConfidencePct}%
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-dark-6">Status:</span>{" "}
+                        <span className="font-medium text-white">
+                          {transaction.suggestionApplied
+                            ? "Auto-applied"
+                            : "Suggested only"}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  {suggestedValue && (
+                    <div>
+                      <span className="text-dark-6">{fieldLabel}:</span>{" "}
+                      <span className="font-medium text-white">{suggestedValue}</span>
+                    </div>
+                  )}
+                  {suggestionReason && (
+                    <div className="leading-relaxed">
+                      <span className="text-dark-6">Reason:</span>{" "}
+                      <span className="text-white">{suggestionReason}</span>
+                    </div>
+                  )}
+                </div>
+              );
 
               return (
                 <Fragment key={`transaction-${index}`}>
@@ -643,16 +780,18 @@ export function TransactionTable({
                       className="py-0 px-2"
                       style={{ width: columnWidths.expand }}
                     >
-                      <button
-                        onClick={() => toggleRowExpanded(index)}
-                        className="p-1 hover:bg-gray-2 dark:hover:bg-dark-3 rounded"
-                      >
-                        {expandedRows.has(index) ? (
-                          <ChevronDown className="h-4 w-4 text-dark-5 dark:text-dark-6" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-dark-5 dark:text-dark-6" />
-                        )}
-                      </button>
+                      <div className="flex min-h-[44px] items-center justify-center">
+                        <button
+                          onClick={() => toggleRowExpanded(index)}
+                          className="p-1 hover:bg-gray-2 dark:hover:bg-dark-3 rounded"
+                        >
+                          {expandedRows.has(index) ? (
+                            <ChevronDown className="h-4 w-4 text-dark-5 dark:text-dark-6" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-dark-5 dark:text-dark-6" />
+                          )}
+                        </button>
+                      </div>
                     </td>
 
                     <td
@@ -680,7 +819,7 @@ export function TransactionTable({
                       className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
                       style={{ width: columnWidths.description }}
                     >
-                      <div className="w-full h-full min-h-[44px] flex items-stretch">
+                      <div className="relative w-full h-full min-h-[44px] flex items-stretch">
                         {deferCellCommit ? (
                           <DeferredTextarea
                             value={transaction.description}
@@ -711,6 +850,15 @@ export function TransactionTable({
                             className="w-full h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 resize-none disabled:cursor-not-allowed"
                           />
                         )}
+                        {!showDuplicatesOnly && (
+                          <button
+                            onClick={() => handleCopyDescriptionToLabel(index)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-gray-2 dark:hover:bg-dark-3 rounded transition-opacity"
+                            title="Copy description to label"
+                          >
+                            <ArrowRight className="h-3.5 w-3.5 text-dark-5 dark:text-dark-6" />
+                          </button>
+                        )}
                       </div>
                     </td>
 
@@ -718,7 +866,7 @@ export function TransactionTable({
                       className="py-0 px-0 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary"
                       style={{ width: columnWidths.label }}
                     >
-                      <div className="w-full flex items-stretch h-full min-h-[44px]">
+                      <div className="relative w-full flex items-stretch h-full min-h-[44px]">
                         {deferCellCommit ? (
                           <DeferredTextInput
                             value={transaction.label || ""}
@@ -729,7 +877,9 @@ export function TransactionTable({
                             disabled={showDuplicatesOnly}
                             dataRow={`${visibleIndex}`}
                             dataCol="label"
-                            className="flex-1 h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 disabled:cursor-not-allowed"
+                            className={`flex-1 h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 disabled:cursor-not-allowed ${
+                              labelMatchesSuggestion ? "pr-8" : ""
+                            }`}
                           />
                         ) : (
                           <input
@@ -742,17 +892,25 @@ export function TransactionTable({
                             disabled={showDuplicatesOnly}
                             data-row={`${visibleIndex}`}
                             data-col="label"
-                            className="flex-1 h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 disabled:cursor-not-allowed"
+                            className={`flex-1 h-full min-h-[44px] px-3 py-2 text-sm border-0 bg-transparent text-dark dark:text-white outline-none focus:ring-0 disabled:cursor-not-allowed ${
+                              labelMatchesSuggestion ? "pr-8" : ""
+                            }`}
                           />
                         )}
-                        {!showDuplicatesOnly && (
-                          <button
-                            onClick={() => handleCopyDescriptionToLabel(index)}
-                            className="p-2 opacity-0 group-hover:opacity-100 hover:bg-gray-2 dark:hover:bg-dark-3 rounded transition-opacity self-center"
-                            title="Copy description to label"
-                          >
-                            <ArrowLeft className="h-3.5 w-3.5 text-dark-5 dark:text-dark-6" />
-                          </button>
+                        {labelMatchesSuggestion && (
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                            <HoverTooltip
+                              content={suggestionTooltipBlock(
+                                "Label",
+                                transaction.suggestedLabel,
+                              )}
+                              align="end"
+                            >
+                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-primary/50 bg-primary/10 text-sm font-bold leading-none text-primary">
+                                *
+                              </span>
+                            </HoverTooltip>
+                          </span>
                         )}
                       </div>
                     </td>
@@ -774,11 +932,18 @@ export function TransactionTable({
                           dropdownPlacement="inline"
                           disabled={
                             showDuplicatesOnly ||
-                            !!transaction.linkage ||
+                            isLockedByLinkage ||
                             isFundingInTopup
                           }
-                          lockedByLinkage={!!transaction.linkage || isFundingInTopup}
+                          lockedByLinkage={isLockedByLinkage || isFundingInTopup}
                           showOpenRing={false}
+                          suggestionMarker={{
+                            show: categoryMatchesSuggestion,
+                            tooltipContent: suggestionTooltipBlock(
+                              "Category",
+                              transaction.suggestedCategoryId,
+                            ),
+                          }}
                           triggerProps={{
                             "data-row": `${visibleIndex}`,
                             "data-col": "category",

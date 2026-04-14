@@ -3,6 +3,8 @@
 import { auth } from "@/lib/auth";
 import { getCategories } from "@/app/actions/categories";
 import { getImportRules, bootstrapDefaultImportRules } from "@/app/actions/importRules";
+import { prisma } from "@/lib/db/client";
+import { applyAutoCategorization } from "@/lib/auto-categorization";
 
 const PARSER_SERVICE_URL =
   process.env.PARSER_SERVICE_URL || "http://file-parser:4000";
@@ -34,6 +36,7 @@ interface ParseResult {
     date: string;
     description: string;
     label?: string;
+    categoryId?: string;
     amountIn?: number;
     amountOut?: number;
     balance?: number;
@@ -41,6 +44,12 @@ interface ParseResult {
     accountNumber?: string;
     metadata: Record<string, any>;
     linkage?: TransactionLinkage | null;
+    suggestedCategoryId?: string;
+    suggestedLabel?: string;
+    suggestedInternal?: boolean;
+    suggestionSource?: "rule" | "history" | "heuristic";
+    suggestionConfidence?: number;
+    suggestionApplied?: boolean;
   }>;
   count: number;
 }
@@ -138,6 +147,26 @@ export async function parseFile(formData: FormData): Promise<ParseResult> {
           }
           return next;
         });
+
+        const userSettings = await prisma.userSettings.findUnique({
+          where: { userId: session.user.id },
+          select: { autoLabelEnabled: true, autoLabelThreshold: true },
+        });
+
+        result.transactions = await applyAutoCategorization(
+          {
+            userId: session.user.id,
+            parserId: String(result.parserId || ""),
+            transactions: result.transactions,
+            categoryByName: new Map(
+              categories.map((category) => [category.name.toLowerCase(), category.id]),
+            ),
+          },
+          {
+            enabled: userSettings?.autoLabelEnabled ?? false,
+            threshold: Number(userSettings?.autoLabelThreshold ?? 0.5),
+          },
+        );
       } catch (rulesError) {
         console.error("Failed to apply import rules in parse stage:", rulesError);
       }

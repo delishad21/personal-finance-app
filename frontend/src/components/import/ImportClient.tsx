@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { parseFile } from "@/app/actions/parser";
 import { createCategory } from "@/app/actions/categories";
 import { upsertAccountNumber } from "@/app/actions/accountNumbers";
+import {
+  getPaylahInternalPreferenceState,
+  setPaylahInternalPreference,
+} from "@/app/actions/importRules";
 import {
   checkImportDuplicates,
   commitImport,
@@ -37,6 +41,8 @@ const PRESET_COLORS = [
   "#ec4899",
 ];
 
+const PAYLAH_PARSER_ID = "dbs_paylah_statement";
+
 type ImportStage = "upload" | "review" | "duplicates" | "complete";
 
 interface Transaction {
@@ -52,6 +58,12 @@ interface Transaction {
   accountNumber?: string;
   metadata: Record<string, any>;
   linkage?: TransactionLinkage | null;
+  suggestedCategoryId?: string;
+  suggestedLabel?: string;
+  suggestedInternal?: boolean;
+  suggestionSource?: "rule" | "history" | "heuristic";
+  suggestionConfidence?: number;
+  suggestionApplied?: boolean;
 }
 
 interface Category {
@@ -114,6 +126,12 @@ export function ImportClient({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
+  const [isPaylahPromptOpen, setIsPaylahPromptOpen] = useState(false);
+  const [isPaylahPromptConfirming, setIsPaylahPromptConfirming] =
+    useState(false);
+  const [pendingUploadAfterPaylahPrompt, setPendingUploadAfterPaylahPrompt] =
+    useState(false);
+  const paylahPromptConfirmedRef = useRef(false);
 
   // Selection state - all transactions selected by default after parsing
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(
@@ -245,7 +263,7 @@ export function ImportClient({
     setReimbursementTargetIndex(null);
   };
 
-  const handleUpload = async () => {
+  const performUpload = async () => {
     if (!file) {
       setError("Please select a file");
       return;
@@ -319,14 +337,84 @@ export function ImportClient({
     }
   };
 
+  const continueAfterPaylahPrompt = async (enabled: boolean) => {
+    setIsPaylahPromptConfirming(true);
+    try {
+      const result = await setPaylahInternalPreference(enabled);
+      setIsPaylahPromptOpen(false);
+      setPendingUploadAfterPaylahPrompt(false);
+
+      if (enabled && result.updatedCount > 0) {
+        showModal(
+          "info",
+          "PayLah Internal Auto-Marking Enabled",
+          `Updated ${result.updatedCount} prior DBS transaction${result.updatedCount === 1 ? "" : "s"} to Internal.`,
+        );
+      }
+
+      await performUpload();
+    } catch (error) {
+      setIsPaylahPromptOpen(false);
+      setPendingUploadAfterPaylahPrompt(false);
+      showModal(
+        "error",
+        "Unable to Save PayLah Preference",
+        error instanceof Error
+          ? error.message
+          : "Failed to save PayLah preference.",
+      );
+    } finally {
+      paylahPromptConfirmedRef.current = false;
+      setIsPaylahPromptConfirming(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) {
+      setError("Please select a file");
+      return;
+    }
+
+    if (selectedParser === PAYLAH_PARSER_ID) {
+      try {
+        const state = await getPaylahInternalPreferenceState();
+        if (state.shouldPrompt) {
+          setPendingUploadAfterPaylahPrompt(true);
+          setIsPaylahPromptOpen(true);
+          return;
+        }
+      } catch (error) {
+        showModal(
+          "error",
+          "Unable to Check PayLah Preference",
+          error instanceof Error
+            ? error.message
+            : "Failed to check PayLah internal preference.",
+        );
+        return;
+      }
+    }
+
+    await performUpload();
+  };
+
   const handleUpdateTransaction = (
     index: number,
     field: string,
     value: any,
   ) => {
-    const updated = [...editedTransactions];
-    updated[index] = { ...updated[index], [field]: value };
-    setEditedTransactions(updated);
+    setEditedTransactions((prev) => {
+      const updated = [...prev];
+      const nextRow = { ...updated[index], [field]: value };
+      if (field === "label") {
+        nextRow.suggestedLabel = undefined;
+      }
+      if (field === "categoryId") {
+        nextRow.suggestedCategoryId = undefined;
+      }
+      updated[index] = nextRow;
+      return updated;
+    });
   };
 
   const handleAddCategory = async (name: string, color: string) => {
@@ -626,6 +714,8 @@ export function ImportClient({
           onOpenReimbursementSelector={
             stage === "review" ? handleOpenReimbursementSelector : undefined
           }
+          deferCellCommit
+          lockLinkedReimbursements={false}
         />
       )}
 
@@ -658,6 +748,33 @@ export function ImportClient({
         type={modalState.type}
         title={modalState.title}
         message={modalState.message}
+      />
+
+      <Modal
+        isOpen={isPaylahPromptOpen}
+        onClose={() => {
+          if (paylahPromptConfirmedRef.current) {
+            return;
+          }
+          if (!pendingUploadAfterPaylahPrompt || isPaylahPromptConfirming) {
+            setIsPaylahPromptOpen(false);
+            return;
+          }
+          void continueAfterPaylahPrompt(false);
+        }}
+        type="info"
+        title="Auto-Mark PayLah Transactions as Internal?"
+        message={
+          "Enable this to auto-mark PayLah transfer rows as Internal in future imports.\n\nIf enabled, prior imported DBS statements will also be updated to mark PayLah rows as Internal."
+        }
+        confirmText={
+          isPaylahPromptConfirming ? "Saving..." : "Enable and Continue"
+        }
+        cancelText="Skip and Continue"
+        onConfirm={() => {
+          paylahPromptConfirmedRef.current = true;
+          void continueAfterPaylahPrompt(true);
+        }}
       />
 
       <ReimbursementSelectorModal

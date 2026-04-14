@@ -37,6 +37,18 @@ export interface ImportRulePayload {
 }
 
 export class TransactionService {
+  private static readonly PAYLAH_INTERNAL_RULE_NAMES = [
+    "PayLah top-up from account is Internal",
+    "DBS/POSB top-up to PayLah is Internal",
+    "PayLah send back to bank is Internal",
+    "DBS/POSB receive back from PayLah is Internal",
+  ] as const;
+
+  private static readonly DBS_PAYLAH_INTERNAL_PATTERNS = [
+    "TOP-UP TO PAYLAH!",
+    "SEND BACK FROM PAYLAH!",
+  ] as const;
+
   private static readonly DEFAULT_IMPORT_RULES: ImportRulePayload[] = [
     {
       name: "PayLah top-up from account is Internal",
@@ -44,7 +56,7 @@ export class TransactionService {
       matchType: "description_contains",
       matchValue: "TOP UP WALLET FROM MY ACCOUNT",
       caseSensitive: false,
-      enabled: true,
+      enabled: false,
       setLabel: null,
       setCategoryName: null,
       markInternal: true,
@@ -56,11 +68,47 @@ export class TransactionService {
       matchType: "description_contains",
       matchValue: "TOP-UP TO PAYLAH!",
       caseSensitive: false,
-      enabled: true,
+      enabled: false,
       setLabel: null,
       setCategoryName: null,
       markInternal: true,
       sortOrder: 20,
+    },
+    {
+      name: "PayLah send back to bank is Internal",
+      parserId: "dbs_paylah_statement",
+      matchType: "description_contains",
+      matchValue: "SEND MONEY TO MY ACCOUNT",
+      caseSensitive: false,
+      enabled: false,
+      setLabel: null,
+      setCategoryName: null,
+      markInternal: true,
+      sortOrder: 30,
+    },
+    {
+      name: "DBS/POSB receive back from PayLah is Internal",
+      parserId: "dbs_posb_consolidated",
+      matchType: "description_contains",
+      matchValue: "SEND BACK FROM PAYLAH!",
+      caseSensitive: false,
+      enabled: false,
+      setLabel: null,
+      setCategoryName: null,
+      markInternal: true,
+      sortOrder: 40,
+    },
+    {
+      name: "BUS/MRT transactions are Transportation",
+      parserId: null,
+      matchType: "description_contains",
+      matchValue: "BUS/MRT",
+      caseSensitive: false,
+      enabled: true,
+      setLabel: null,
+      setCategoryName: "Transportation",
+      markInternal: false,
+      sortOrder: 50,
     },
   ];
 
@@ -519,6 +567,132 @@ export class TransactionService {
         });
       }),
     );
+  }
+
+  static async getPaylahInternalPreferenceState(userId: string) {
+    const [settings, paylahRules] = await Promise.all([
+      prisma.userSettings.findUnique({
+        where: { userId },
+        select: {
+          paylahInternalPrompted: true,
+          paylahAutoInternal: true,
+        },
+      }),
+      prisma.importRule.findMany({
+        where: {
+          userId,
+          name: { in: [...this.PAYLAH_INTERNAL_RULE_NAMES] },
+        },
+        select: {
+          id: true,
+          enabled: true,
+        },
+      }),
+    ]);
+
+    const hasEnabledRule = paylahRules.some((rule) => rule.enabled);
+    const prompted = Boolean(settings?.paylahInternalPrompted || hasEnabledRule);
+    const enabled = Boolean(settings?.paylahAutoInternal || hasEnabledRule);
+
+    return {
+      shouldPrompt: !prompted,
+      enabled,
+    };
+  }
+
+  private static async backfillDbsPaylahTransactionsAsInternal(userId: string) {
+    const { internal } = await this.ensureReservedCategories(userId);
+
+    const candidates = await prisma.transaction.findMany({
+      where: {
+        userId,
+        importBatch: {
+          is: { parserId: "dbs_posb_consolidated" },
+        },
+        OR: this.DBS_PAYLAH_INTERNAL_PATTERNS.map((pattern) => ({
+          description: {
+            contains: pattern,
+            mode: "insensitive",
+          },
+        })),
+      },
+      select: {
+        id: true,
+        linkage: true,
+      },
+    });
+
+    const eligibleIds = candidates
+      .filter((transaction) => {
+        const linkage = transaction.linkage as TransactionLinkage | null;
+        return linkage?.type !== "reimbursement" && linkage?.type !== "reimbursed";
+      })
+      .map((transaction) => transaction.id);
+
+    if (eligibleIds.length === 0) {
+      return { updatedCount: 0 };
+    }
+
+    await prisma.transaction.updateMany({
+      where: {
+        userId,
+        id: { in: eligibleIds },
+      },
+      data: {
+        linkage: {
+          type: "internal",
+          autoDetected: true,
+          detectionReason: "Enabled PayLah internal auto-marking",
+        },
+        categoryId: internal.id,
+      },
+    });
+
+    return { updatedCount: eligibleIds.length };
+  }
+
+  static async setPaylahInternalPreference(userId: string, enabled: boolean) {
+    await this.bootstrapDefaultImportRules(userId);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.userSettings.upsert({
+        where: { userId },
+        update: {
+          paylahInternalPrompted: true,
+          paylahAutoInternal: enabled,
+        },
+        create: {
+          userId,
+          paylahInternalPrompted: true,
+          paylahAutoInternal: enabled,
+        },
+      });
+
+      await tx.importRule.updateMany({
+        where: {
+          userId,
+          name: { in: [...this.PAYLAH_INTERNAL_RULE_NAMES] },
+        },
+        data: {
+          enabled,
+        },
+      });
+    });
+
+    if (!enabled) {
+      return {
+        enabled,
+        updatedCount: 0,
+      };
+    }
+
+    const { updatedCount } =
+      await this.backfillDbsPaylahTransactionsAsInternal(userId);
+
+    return {
+      enabled,
+      updatedCount,
+    };
   }
 
   static async getImportRules(userId: string) {
@@ -1313,12 +1487,19 @@ export class TransactionService {
     query: string | undefined,
     limit: number = 20,
     offset: number = 0,
+    filters?: {
+      transactionType?: "in" | "out";
+      categoryId?: string;
+      dateFrom?: Date;
+      dateTo?: Date;
+    },
   ) {
     return TransactionRepository.searchForReimbursement(
       userId,
       query,
       limit,
       offset,
+      filters,
     );
   }
 

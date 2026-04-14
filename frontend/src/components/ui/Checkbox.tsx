@@ -23,7 +23,13 @@ export function Checkbox({
       role="checkbox"
       aria-checked={indeterminate ? "mixed" : checked}
       disabled={disabled}
-      onClick={() => !disabled && onChange(!checked)}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!disabled) {
+          onChange(!checked);
+        }
+      }}
       className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-all ${
         checked || indeterminate
           ? "bg-primary border-primary"
