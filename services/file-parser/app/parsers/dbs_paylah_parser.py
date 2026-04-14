@@ -24,16 +24,27 @@ def parse(content: bytes) -> list[dict]:
 
         # Statement date - format: "22 Dec 2025 6593417426 888888002335658"
         # Note: accountNumber is extracted but not stored in metadata (use accountIdentifier field instead)
-        match = re.search(r"(\d{1,2}\s+\w+\s+(\d{4}))\s+\d{10}\s+(\d{16})", all_text)
+        account_number = None
+        match = re.search(
+            r"(\d{1,2}\s+\w+\s+(\d{4}))\s+\d{8,10}\s+(\d{16})",
+            all_text,
+        )
         if match:
             account_metadata["statementDate"] = match.group(1)
             account_metadata["statementYear"] = int(match.group(2))
+            try:
+                account_metadata["statementMonth"] = date_parser.parse(
+                    match.group(1)
+                ).month
+            except Exception:
+                account_metadata["statementMonth"] = None
             # accountNumber extracted for import flow but not stored in metadata
             account_number = match.group(3)
             print(f"Statement Date: {match.group(1)}")
             print(f"Wallet Account: {account_number}")
 
         current_year = account_metadata.get("statementYear", datetime.now().year)
+        statement_month = account_metadata.get("statementMonth")
         in_section = False
 
         for i, line in enumerate(lines):
@@ -67,8 +78,17 @@ def parse(content: bytes) -> list[dict]:
 
                 try:
                     parsed_date = date_parser.parse(f"{date_str} {current_year}")
+                    # Statements can straddle year-end (e.g. Jan statement includes Dec rows).
+                    # If the transaction month is after the statement month, move it to previous year.
+                    if (
+                        isinstance(statement_month, int)
+                        and statement_month >= 1
+                        and statement_month <= 12
+                        and parsed_date.month > statement_month
+                    ):
+                        parsed_date = parsed_date.replace(year=parsed_date.year - 1)
                     date_formatted = parsed_date.strftime("%Y-%m-%d")
-                except:
+                except Exception:
                     date_formatted = date_str
 
                 transaction = {
