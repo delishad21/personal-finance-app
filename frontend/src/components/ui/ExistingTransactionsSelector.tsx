@@ -55,6 +55,8 @@ interface ExistingTransactionsSelectorProps {
   recommendedTransactionId?: string;
   footerAction?: ReactNode;
   emptyMessage?: string;
+  showExpandButton?: boolean;
+  showSearchBar?: boolean;
 }
 
 const toNumberOrNull = (value: unknown): number | null => {
@@ -97,6 +99,8 @@ export function ExistingTransactionsSelector({
   recommendedTransactionId,
   footerAction,
   emptyMessage = "No transactions found.",
+  showExpandButton = true,
+  showSearchBar = true,
 }: ExistingTransactionsSelectorProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedSearch, setExpandedSearch] = useState("");
@@ -195,29 +199,33 @@ export function ExistingTransactionsSelector({
     >
       <div className="border-b border-stroke dark:border-dark-3 px-3 py-2 flex items-center justify-between gap-2">
         <h4 className="text-sm font-medium text-dark dark:text-white">{title}</h4>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setExpandedSearch(searchValue);
-            setIsExpanded(true);
-          }}
-          leftIcon={<Maximize2 className="h-3.5 w-3.5" />}
-        >
-          Expand
-        </Button>
+        {showExpandButton && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setExpandedSearch(searchValue);
+              setIsExpanded(true);
+            }}
+            leftIcon={<Maximize2 className="h-3.5 w-3.5" />}
+          >
+            Expand
+          </Button>
+        )}
       </div>
 
-      <div className="border-b border-stroke dark:border-dark-3 px-3 py-2">
-        <SearchBar
-          placeholder={searchPlaceholder}
-          value={searchValue}
-          onChange={onSearchValueChange}
-          onSearch={onSearch}
-          showButton
-          isLoading={isLoading}
-        />
-      </div>
+      {showSearchBar ? (
+        <div className="border-b border-stroke dark:border-dark-3 px-3 py-2">
+          <SearchBar
+            placeholder={searchPlaceholder}
+            value={searchValue}
+            onChange={onSearchValueChange}
+            onSearch={onSearch}
+            showButton
+            isLoading={isLoading}
+          />
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {isLoading ? (

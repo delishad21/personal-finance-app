@@ -2147,6 +2147,7 @@ export function TripTransactionsClient({
           linkage.reimbursingFxRate !== null
             ? Number(linkage.reimbursingFxRate)
             : null,
+        syncToBankLedger: linkage.syncToBankLedger === true,
       });
       await refreshEntries(page, filters);
       setActiveReimbursementEntryId(null);
@@ -2382,7 +2383,14 @@ export function TripTransactionsClient({
   ) => {
     setTripImportEditedTransactions((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
+      const nextRow = { ...next[index], [field]: value };
+      if (field === "label") {
+        nextRow.suggestedLabel = undefined;
+      }
+      if (field === "categoryId") {
+        nextRow.suggestedCategoryId = undefined;
+      }
+      next[index] = nextRow;
       return next;
     });
   };
@@ -3101,9 +3109,11 @@ export function TripTransactionsClient({
           transactions={[activeReimbursementImportTransaction]}
           currentLinkage={activeReimbursementImportTransaction.linkage || null}
           categories={localCategories}
+          wallets={wallets}
           baseCurrency={trip.baseCurrency}
           hideCurrentImportSection
           excludeEntryId={activeReimbursementEntry.id}
+          showSyncToBankToggle
         />
       )}
 

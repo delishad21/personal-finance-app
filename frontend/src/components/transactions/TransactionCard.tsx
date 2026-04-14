@@ -80,6 +80,7 @@ interface TransactionCardProps {
   onEdit?: (transaction: TransactionCardTransaction) => void;
   onDelete?: (id: string) => void;
   selected?: boolean;
+  selectionTone?: "primary" | "success";
   onToggleSelect?: () => void;
   linkedTransactions?: {
     reimburses: LinkedTransaction[];
@@ -96,6 +97,7 @@ export function TransactionCard({
   onEdit,
   onDelete,
   selected = false,
+  selectionTone = "primary",
   onToggleSelect,
   linkedTransactions,
 }: TransactionCardProps) {
@@ -146,7 +148,11 @@ export function TransactionCard({
   return (
     <div
       className={`bg-white dark:bg-dark-2 transition-colors border ${
-        isExpanded || selected ? "border-primary" : "border-transparent"
+        isExpanded || selected
+          ? selectionTone === "success"
+            ? "border-green bg-green/5 dark:bg-green/10"
+            : "border-primary"
+          : "border-transparent"
       } ${isInternal ? "opacity-70" : ""} ${className || ""}`}
     >
       {/* Main Content */}

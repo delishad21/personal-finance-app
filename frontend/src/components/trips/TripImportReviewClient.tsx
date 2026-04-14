@@ -983,7 +983,14 @@ export function TripImportReviewClient({
   ) => {
     setTripImportEditedTransactions((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
+      const nextRow = { ...next[index], [field]: value };
+      if (field === "label") {
+        nextRow.suggestedLabel = undefined;
+      }
+      if (field === "categoryId") {
+        nextRow.suggestedCategoryId = undefined;
+      }
+      next[index] = nextRow;
       return next;
     });
   };
@@ -1363,6 +1370,7 @@ export function TripImportReviewClient({
               amountInHeader={`In (${tableCurrencyIndicator})`}
               amountOutHeader={`Out (${tableCurrencyIndicator})`}
               deferCellCommit
+              lockLinkedReimbursements={false}
               renderExpandedActions={(index, transaction) => {
                 const isFundingOut =
                   transaction.entryTypeOverride === "funding_out";
@@ -2295,6 +2303,7 @@ export function TripImportReviewClient({
           transactions={tripImportEditedTransactions}
           currentLinkage={tripImportEditedTransactions[reimbursementTargetIndex]?.linkage || null}
           categories={localCategories}
+          wallets={wallets}
           baseCurrency={trip.baseCurrency}
         />
       )}

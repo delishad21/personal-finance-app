@@ -459,6 +459,12 @@ export async function searchTransactionsForReimbursement(
   query?: string,
   limit: number = 20,
   offset: number = 0,
+  filters?: {
+    transactionType?: "all" | "in" | "out";
+    categoryId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  },
 ) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -470,6 +476,12 @@ export async function searchTransactionsForReimbursement(
     limit: limit.toString(),
     offset: offset.toString(),
     ...(query?.trim() ? { query: query.trim() } : {}),
+    ...(filters?.transactionType && filters.transactionType !== "all"
+      ? { transactionType: filters.transactionType }
+      : {}),
+    ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
+    ...(filters?.dateFrom ? { dateFrom: filters.dateFrom } : {}),
+    ...(filters?.dateTo ? { dateTo: filters.dateTo } : {}),
   });
 
   const response = await fetch(

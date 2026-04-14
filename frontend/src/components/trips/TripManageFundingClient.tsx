@@ -1896,7 +1896,14 @@ export function TripManageFundingClient({
   ) => {
     setTripImportEditedTransactions((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
+      const nextRow = { ...next[index], [field]: value };
+      if (field === "label") {
+        nextRow.suggestedLabel = undefined;
+      }
+      if (field === "categoryId") {
+        nextRow.suggestedCategoryId = undefined;
+      }
+      next[index] = nextRow;
       return next;
     });
   };
@@ -4150,6 +4157,7 @@ export function TripManageFundingClient({
                     onToggleSelection={handleTripImportToggleSelection}
                     onAddCategoryClick={() => setIsAddCategoryModalOpen(true)}
                     onBack={() => setTripImportStep("setup")}
+                    deferCellCommit
                   />
                 </div>
                 <div className="min-h-0 space-y-3">

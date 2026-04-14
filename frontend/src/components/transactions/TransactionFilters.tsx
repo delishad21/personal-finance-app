@@ -85,6 +85,13 @@ export function TransactionFilters({
         key === "month" ? (value as string) : nextFilters.month;
       const yearValue = key === "year" ? (value as string) : nextFilters.year;
 
+      if (key === "month" && !monthValue) {
+        nextFilters = { ...nextFilters, year: "" };
+      }
+      if (key === "year" && !yearValue) {
+        nextFilters = { ...nextFilters, month: "" };
+      }
+
       if (monthValue && yearValue) {
         const year = Number(yearValue);
         const monthIndex = Number(monthValue) - 1;
@@ -253,50 +260,46 @@ export function TransactionFilters({
           </div>
         </div>
 
-        <div className="w-45">
+        <div className="w-80">
           <label className="text-xs font-medium text-dark-5 dark:text-dark-6">
-            Month
+            Month / Year
           </label>
-          <Select
-            value={filters.month}
-            onChange={(value) => updateFilter("month", value)}
-            options={[
-              { value: "", label: "All Months" },
-              { value: "01", label: "January" },
-              { value: "02", label: "February" },
-              { value: "03", label: "March" },
-              { value: "04", label: "April" },
-              { value: "05", label: "May" },
-              { value: "06", label: "June" },
-              { value: "07", label: "July" },
-              { value: "08", label: "August" },
-              { value: "09", label: "September" },
-              { value: "10", label: "October" },
-              { value: "11", label: "November" },
-              { value: "12", label: "December" },
-            ]}
-            className="mt-1 w-full"
-            buttonClassName="w-full"
-          />
-        </div>
-
-        <div className="w-35">
-          <label className="text-xs font-medium text-dark-5 dark:text-dark-6">
-            Year
-          </label>
-          <Select
-            value={filters.year}
-            onChange={(value) => updateFilter("year", value)}
-            options={[
-              { value: "", label: "All Years" },
-              ...availableYears.map((year) => ({
-                value: String(year),
-                label: String(year),
-              })),
-            ]}
-            className="mt-1 w-full"
-            buttonClassName="w-full"
-          />
+          <div className="mt-1 grid grid-cols-2 gap-2">
+            <Select
+              value={filters.month}
+              onChange={(value) => updateFilter("month", value)}
+              options={[
+                { value: "", label: "Month" },
+                { value: "01", label: "January" },
+                { value: "02", label: "February" },
+                { value: "03", label: "March" },
+                { value: "04", label: "April" },
+                { value: "05", label: "May" },
+                { value: "06", label: "June" },
+                { value: "07", label: "July" },
+                { value: "08", label: "August" },
+                { value: "09", label: "September" },
+                { value: "10", label: "October" },
+                { value: "11", label: "November" },
+                { value: "12", label: "December" },
+              ]}
+              className="w-full"
+              buttonClassName="w-full"
+            />
+            <Select
+              value={filters.year}
+              onChange={(value) => updateFilter("year", value)}
+              options={[
+                { value: "", label: "Year" },
+                ...availableYears.map((year) => ({
+                  value: String(year),
+                  label: String(year),
+                })),
+              ]}
+              className="w-full"
+              buttonClassName="w-full"
+            />
+          </div>
         </div>
 
         <div className="ml-auto relative" ref={advancedRef}>

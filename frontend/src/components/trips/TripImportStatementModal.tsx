@@ -265,6 +265,8 @@ export function TripImportStatementModal({
                 onToggleSelection={onToggleSelection}
                 onAddCategoryClick={onAddCategoryClick}
                 onBack={() => setTripImportStep("setup")}
+                deferCellCommit
+                lockLinkedReimbursements={false}
               />
             </div>
             <div className="min-h-0 space-y-3">

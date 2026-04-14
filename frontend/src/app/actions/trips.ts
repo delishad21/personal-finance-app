@@ -96,7 +96,17 @@ export interface TripReimbursementCandidate {
   baseAmount: number;
   alreadyAllocatedBase: number;
   remainingBase: number;
-  walletName?: string | null;
+  wallet?: {
+    id?: string | null;
+    name?: string | null;
+    currency?: string | null;
+    color?: string | null;
+  } | null;
+  category?: {
+    id?: string | null;
+    name?: string | null;
+    color?: string | null;
+  } | null;
 }
 
 export interface TripEntryFilterPayload {
@@ -825,6 +835,10 @@ export async function searchTripEntriesForReimbursement(
     limit?: number;
     offset?: number;
     excludeEntryId?: string;
+    walletId?: string;
+    categoryId?: string;
+    dateFrom?: string;
+    dateTo?: string;
   },
 ): Promise<{
   transactions: TripReimbursementCandidate[];
@@ -841,6 +855,10 @@ export async function searchTripEntriesForReimbursement(
     ...(options?.limit ? { limit: String(options.limit) } : {}),
     ...(options?.offset ? { offset: String(options.offset) } : {}),
     ...(options?.excludeEntryId ? { excludeEntryId: options.excludeEntryId } : {}),
+    ...(options?.walletId ? { walletId: options.walletId } : {}),
+    ...(options?.categoryId ? { categoryId: options.categoryId } : {}),
+    ...(options?.dateFrom ? { dateFrom: options.dateFrom } : {}),
+    ...(options?.dateTo ? { dateTo: options.dateTo } : {}),
   });
 
   const response = await fetch(
@@ -868,6 +886,7 @@ export async function createTripReimbursementLink(
     leftoverCategoryId?: string | null;
     reimbursementBaseAmount?: number | null;
     reimbursingFxRate?: number | null;
+    syncToBankLedger?: boolean;
   },
 ) {
   const session = await auth();
