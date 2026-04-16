@@ -636,6 +636,9 @@ transactionRouter.get(
       const dateTo = req.query.dateTo
         ? new Date(String(req.query.dateTo))
         : undefined;
+      const amountEquals = req.query.amountEquals
+        ? Number(req.query.amountEquals)
+        : undefined;
 
       if (!userId) {
         return res.status(400).json({ error: "userId is required" });
@@ -655,6 +658,10 @@ transactionRouter.get(
           dateFrom:
             dateFrom && !Number.isNaN(dateFrom.getTime()) ? dateFrom : undefined,
           dateTo: dateTo && !Number.isNaN(dateTo.getTime()) ? dateTo : undefined,
+          amountEquals:
+            typeof amountEquals === "number" && Number.isFinite(amountEquals)
+              ? amountEquals
+              : undefined,
         },
       );
 

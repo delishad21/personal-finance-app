@@ -198,6 +198,7 @@ export class TripService {
       categoryId?: string;
       dateFrom?: Date;
       dateTo?: Date;
+      amountBaseEquals?: number;
     },
   ) {
     return TripRepository.searchTripEntriesForReimbursement(

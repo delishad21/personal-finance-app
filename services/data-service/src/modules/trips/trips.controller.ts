@@ -208,6 +208,10 @@ const TripReimbursementSearchQuerySchema = z.object({
     .string()
     .optional()
     .transform((value) => (value ? new Date(value) : undefined)),
+  amountBaseEquals: z
+    .string()
+    .optional()
+    .transform((value) => (value ? Number(value) : undefined)),
   limit: z
     .string()
     .optional()
@@ -846,6 +850,11 @@ tripsRouter.get(
           categoryId: query.categoryId,
           dateFrom: query.dateFrom,
           dateTo: query.dateTo,
+          amountBaseEquals:
+            typeof query.amountBaseEquals === "number" &&
+            Number.isFinite(query.amountBaseEquals)
+              ? query.amountBaseEquals
+              : undefined,
         },
       );
       res.json(result);

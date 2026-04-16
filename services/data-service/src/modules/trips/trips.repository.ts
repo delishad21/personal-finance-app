@@ -6090,6 +6090,7 @@ export class TripRepository {
       categoryId?: string;
       dateFrom?: Date;
       dateTo?: Date;
+      amountBaseEquals?: number;
     },
   ) {
     const safeLimit = Math.max(1, Math.min(limit, 100));
@@ -6120,6 +6121,15 @@ export class TripRepository {
     }
     if (filters?.dateTo) {
       where.push(Prisma.sql`te.transaction_date <= ${filters.dateTo}`);
+    }
+    if (
+      typeof filters?.amountBaseEquals === "number" &&
+      Number.isFinite(filters.amountBaseEquals)
+    ) {
+      const normalizedAmount = Number(filters.amountBaseEquals.toFixed(4));
+      where.push(
+        Prisma.sql`ABS(te.base_amount - ${normalizedAmount}) <= 0.0001`,
+      );
     }
     const trimmedSearch = search?.trim();
     if (trimmedSearch) {

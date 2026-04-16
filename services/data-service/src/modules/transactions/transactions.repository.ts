@@ -586,6 +586,7 @@ export class TransactionRepository {
       categoryId?: string;
       dateFrom?: Date;
       dateTo?: Date;
+      amountEquals?: number;
     },
   ) {
     const trimmed = query?.trim();
@@ -612,11 +613,33 @@ export class TransactionRepository {
             },
           }
         : {}),
+      ...(typeof filters?.amountEquals === "number" &&
+      Number.isFinite(filters.amountEquals)
+        ? (() => {
+            const normalizedAmount = Number(filters.amountEquals.toFixed(2));
+            if (filters.transactionType === "out") {
+              return { amountOut: { equals: normalizedAmount } };
+            }
+            if (filters.transactionType === "in") {
+              return { amountIn: { equals: normalizedAmount } };
+            }
+            return {
+              OR: [
+                { amountOut: { equals: normalizedAmount } },
+                { amountIn: { equals: normalizedAmount } },
+              ],
+            };
+          })()
+        : {}),
       ...(trimmed
         ? {
-            OR: [
-              { description: { contains: trimmed, mode: "insensitive" } },
-              { label: { contains: trimmed, mode: "insensitive" } },
+            AND: [
+              {
+                OR: [
+                  { description: { contains: trimmed, mode: "insensitive" } },
+                  { label: { contains: trimmed, mode: "insensitive" } },
+                ],
+              },
             ],
           }
         : {}),
