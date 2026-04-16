@@ -464,6 +464,7 @@ export async function searchTransactionsForReimbursement(
     categoryId?: string;
     dateFrom?: string;
     dateTo?: string;
+    amountEquals?: number;
   },
 ) {
   const session = await auth();
@@ -482,6 +483,9 @@ export async function searchTransactionsForReimbursement(
     ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
     ...(filters?.dateFrom ? { dateFrom: filters.dateFrom } : {}),
     ...(filters?.dateTo ? { dateTo: filters.dateTo } : {}),
+    ...(typeof filters?.amountEquals === "number"
+      ? { amountEquals: String(filters.amountEquals) }
+      : {}),
   });
 
   const response = await fetch(
