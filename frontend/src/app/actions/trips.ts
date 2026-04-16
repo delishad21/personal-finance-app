@@ -839,6 +839,7 @@ export async function searchTripEntriesForReimbursement(
     categoryId?: string;
     dateFrom?: string;
     dateTo?: string;
+    amountBaseEquals?: number;
   },
 ): Promise<{
   transactions: TripReimbursementCandidate[];
@@ -859,6 +860,9 @@ export async function searchTripEntriesForReimbursement(
     ...(options?.categoryId ? { categoryId: options.categoryId } : {}),
     ...(options?.dateFrom ? { dateFrom: options.dateFrom } : {}),
     ...(options?.dateTo ? { dateTo: options.dateTo } : {}),
+    ...(typeof options?.amountBaseEquals === "number"
+      ? { amountBaseEquals: String(options.amountBaseEquals) }
+      : {}),
   });
 
   const response = await fetch(

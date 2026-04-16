@@ -174,6 +174,23 @@ export function TripReimbursementSelectorModal({
   const [reimbursementBaseAmountInput, setReimbursementBaseAmountInput] =
     useState("");
   const [reimbursementFxInput, setReimbursementFxInput] = useState("");
+  const reimbursementBaseAmountForSearch = useMemo(() => {
+    if (!requiresManualValuation) return Number(reimbursementLocalAmount.toFixed(4));
+
+    if (valuationInputMode === "amount") {
+      return Number(toNumber(reimbursementBaseAmountInput).toFixed(4));
+    }
+
+    const fx = toNumber(reimbursementFxInput);
+    if (!(fx > 0)) return 0;
+    return Number((reimbursementLocalAmount * fx).toFixed(4));
+  }, [
+    requiresManualValuation,
+    reimbursementLocalAmount,
+    valuationInputMode,
+    reimbursementBaseAmountInput,
+    reimbursementFxInput,
+  ]);
 
   const [selectedBatchIndices, setSelectedBatchIndices] = useState<Set<number>>(
     new Set(),
@@ -197,6 +214,7 @@ export function TripReimbursementSelectorModal({
   const [currentCategoryFilter, setCurrentCategoryFilter] = useState("");
   const [currentDateFrom, setCurrentDateFrom] = useState("");
   const [currentDateTo, setCurrentDateTo] = useState("");
+  const [currentSameAmountOnly, setCurrentSameAmountOnly] = useState(false);
 
   const [dbSearchInput, setDbSearchInput] = useState("");
   const [dbSearchQuery, setDbSearchQuery] = useState("");
@@ -204,6 +222,7 @@ export function TripReimbursementSelectorModal({
   const [dbCategoryFilter, setDbCategoryFilter] = useState("");
   const [dbDateFrom, setDbDateFrom] = useState("");
   const [dbDateTo, setDbDateTo] = useState("");
+  const [dbSameAmountOnly, setDbSameAmountOnly] = useState(false);
   const [dbTransactions, setDbTransactions] = useState<TripReimbursementCandidate[]>(
     [],
   );
@@ -220,6 +239,7 @@ export function TripReimbursementSelectorModal({
         categoryId?: string;
         dateFrom?: string;
         dateTo?: string;
+        amountBaseEquals?: number;
       },
     ) => {
       setIsLoadingDb(true);
@@ -234,6 +254,7 @@ export function TripReimbursementSelectorModal({
           categoryId: filters?.categoryId,
           dateFrom: filters?.dateFrom,
           dateTo: filters?.dateTo,
+          amountBaseEquals: filters?.amountBaseEquals,
         });
 
         const rows = (result?.transactions || []) as TripReimbursementCandidate[];
@@ -280,6 +301,7 @@ export function TripReimbursementSelectorModal({
     setCurrentCategoryFilter("");
     setCurrentDateFrom("");
     setCurrentDateTo("");
+    setCurrentSameAmountOnly(false);
 
     setDbSearchInput("");
     setDbSearchQuery("");
@@ -287,6 +309,7 @@ export function TripReimbursementSelectorModal({
     setDbCategoryFilter("");
     setDbDateFrom("");
     setDbDateTo("");
+    setDbSameAmountOnly(false);
     setDbPage(1);
 
     setValuationInputMode("amount");
@@ -320,6 +343,8 @@ export function TripReimbursementSelectorModal({
       categoryId: dbCategoryFilter,
       dateFrom: dbDateFrom,
       dateTo: dbDateTo,
+      amountBaseEquals:
+        dbSameAmountOnly ? reimbursementBaseAmountForSearch : undefined,
     });
   }, [
     isOpen,
@@ -328,6 +353,8 @@ export function TripReimbursementSelectorModal({
     dbCategoryFilter,
     dbDateFrom,
     dbDateTo,
+    dbSameAmountOnly,
+    reimbursementBaseAmountForSearch,
     loadExistingTransactions,
   ]);
 
@@ -450,13 +477,17 @@ export function TripReimbursementSelectorModal({
       const txDate = item.transaction.date || "";
       const matchesDateFrom = !currentDateFrom || txDate >= currentDateFrom;
       const matchesDateTo = !currentDateTo || txDate <= currentDateTo;
+      const matchesAmount =
+        !currentSameAmountOnly ||
+        Math.abs(item.baseAmount - reimbursementBaseAmountForSearch) <= 0.0001;
 
       return (
         matchesSearch &&
         matchesType &&
         matchesCategory &&
         matchesDateFrom &&
-        matchesDateTo
+        matchesDateTo &&
+        matchesAmount
       );
     });
   }, [
@@ -466,6 +497,8 @@ export function TripReimbursementSelectorModal({
     currentCategoryFilter,
     currentDateFrom,
     currentDateTo,
+    currentSameAmountOnly,
+    reimbursementBaseAmountForSearch,
   ]);
 
   const selectedBatchItems = selectableBatchTransactions.filter((item) =>
@@ -480,13 +513,59 @@ export function TripReimbursementSelectorModal({
     [selectedDbIds, selectedDbCache, dbTransactions],
   );
 
+  const stagedAllocatedByBatchIndex = useMemo(() => {
+    const map = new Map<number, number>();
+    transactions.forEach((transaction, index) => {
+      if (index === currentIndex) return;
+      if (transaction.linkage?.type !== "reimbursement") return;
+      (transaction.linkage.reimbursesAllocations || []).forEach((allocation) => {
+        if (typeof allocation.pendingBatchIndex !== "number") return;
+        const amount = toNumber(
+          (allocation as unknown as { amountBase?: number }).amountBase ??
+            allocation.amount,
+        );
+        if (!(amount > 0)) return;
+        map.set(
+          allocation.pendingBatchIndex,
+          Number(
+            ((map.get(allocation.pendingBatchIndex) || 0) + amount).toFixed(4),
+          ),
+        );
+      });
+    });
+    return map;
+  }, [transactions, currentIndex]);
+
+  const stagedAllocatedByDbId = useMemo(() => {
+    const map = new Map<string, number>();
+    transactions.forEach((transaction, index) => {
+      if (index === currentIndex) return;
+      if (transaction.linkage?.type !== "reimbursement") return;
+      (transaction.linkage.reimbursesAllocations || []).forEach((allocation) => {
+        if (typeof allocation.transactionId !== "string") return;
+        const amount = toNumber(
+          (allocation as unknown as { amountBase?: number }).amountBase ??
+            allocation.amount,
+        );
+        if (!(amount > 0)) return;
+        map.set(
+          allocation.transactionId,
+          Number(((map.get(allocation.transactionId) || 0) + amount).toFixed(4)),
+        );
+      });
+    });
+    return map;
+  }, [transactions, currentIndex]);
+
   const selectedItems = [
     ...selectedBatchItems.map((item) => ({
       key: toBatchKey(item.index),
       title: item.transaction.label?.trim() || item.transaction.description,
       subtitle: `${formatDate(item.transaction.date)} · Current import`,
       reimbursableAmount: item.baseAmount,
-      alreadyAllocated: 0,
+      alreadyAllocated: Number(
+        (stagedAllocatedByBatchIndex.get(item.index) || 0).toFixed(4),
+      ),
       onRemove: () => {
         setSelectedBatchIndices((prev) => {
           const next = new Set(prev);
@@ -500,7 +579,11 @@ export function TripReimbursementSelectorModal({
       title: item.label?.trim() || item.description,
       subtitle: `${formatDate(item.date)} · Existing transaction`,
       reimbursableAmount: Number(item.baseAmount || 0),
-      alreadyAllocated: Number(item.alreadyAllocatedBase || 0),
+      alreadyAllocated: Number(
+        ((item.alreadyAllocatedBase || 0) + (stagedAllocatedByDbId.get(item.id) || 0)).toFixed(
+          4,
+        ),
+      ),
       onRemove: () => {
         setSelectedDbIds((prev) => {
           const next = new Set(prev);
@@ -521,24 +604,7 @@ export function TripReimbursementSelectorModal({
     ),
   }));
 
-  const resolvedReimbursementBaseAmount = useMemo(() => {
-    if (!requiresManualValuation) return Number(reimbursementLocalAmount.toFixed(4));
-
-    if (valuationInputMode === "amount") {
-      return Number(toNumber(reimbursementBaseAmountInput).toFixed(4));
-    }
-
-    const fx = toNumber(reimbursementFxInput);
-    if (!(fx > 0)) return 0;
-    return Number((reimbursementLocalAmount * fx).toFixed(4));
-  }, [
-    reimbursementLocalAmount,
-    reimbursementBaseAmountInput,
-    reimbursementFxInput,
-    requiresManualValuation,
-    valuationInputMode,
-  ]);
-  const reimbursementBaseAmount = resolvedReimbursementBaseAmount;
+  const reimbursementBaseAmount = reimbursementBaseAmountForSearch;
 
   const setAllocation = (key: string, value: number) => {
     setAllocationByTarget((prev) => ({
@@ -657,7 +723,12 @@ export function TripReimbursementSelectorModal({
       return;
     }
 
-    const maxAmount = Number(Math.max(item.remainingBase || 0, 0).toFixed(4));
+    const maxAmount = Number(
+      Math.max(
+        Number(item.remainingBase || 0) - (stagedAllocatedByDbId.get(item.id) || 0),
+        0,
+      ).toFixed(4),
+    );
     setSelectedDbIds((prev) => {
       const next = new Set(prev);
       next.add(item.id);
@@ -886,63 +957,113 @@ export function TripReimbursementSelectorModal({
             ) : null}
 
             <div className="border-b border-stroke p-3 dark:border-dark-3">
-              <div
-                className={`grid grid-cols-1 gap-2 ${
-                  selectorTab === "existing" ? "xl:grid-cols-6" : "xl:grid-cols-5"
-                }`}
-              >
-                <SearchBar
-                  placeholder="Search label or description"
-                  value={selectorTab === "current" ? currentSearch : dbSearchInput}
-                  onChange={
-                    selectorTab === "current" ? setCurrentSearch : setDbSearchInput
-                  }
-                  onSearch={
-                    selectorTab === "current"
-                      ? undefined
-                      : () => setDbSearchQuery(dbSearchInput.trim())
-                  }
-                  showButton={selectorTab === "existing"}
-                  isLoading={selectorTab === "existing" ? isLoadingDb : false}
-                  className={selectorTab === "existing" ? "xl:col-span-2" : "xl:col-span-2"}
-                />
-
-                <Select
-                  value={selectorTab === "current" ? currentTypeFilter : "out"}
-                  onChange={(value) => {
-                    if (selectorTab === "current") {
-                      setCurrentTypeFilter(value as AmountType);
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-end gap-2">
+                  <SearchBar
+                    placeholder="Search label or description"
+                    value={selectorTab === "current" ? currentSearch : dbSearchInput}
+                    onChange={
+                      selectorTab === "current" ? setCurrentSearch : setDbSearchInput
                     }
-                  }}
-                  options={[
-                    { value: "all", label: "All types" },
-                    { value: "in", label: "In only" },
-                    { value: "out", label: "Out only" },
-                  ]}
-                  disabled={selectorTab === "existing"}
-                />
-
-                <Select
-                  value={selectorTab === "current" ? currentCategoryFilter : dbCategoryFilter}
-                  onChange={(value) => {
-                    if (selectorTab === "current") {
-                      setCurrentCategoryFilter(value);
-                    } else {
-                      setDbCategoryFilter(value);
+                    onSearch={
+                      selectorTab === "current"
+                        ? undefined
+                        : () => setDbSearchQuery(dbSearchInput.trim())
                     }
-                  }}
-                  options={categoryOptions}
-                />
-
-                {selectorTab === "existing" ? (
-                  <Select
-                    value={dbWalletFilter}
-                    onChange={setDbWalletFilter}
-                    options={walletOptions}
+                    showButton={selectorTab === "existing"}
+                    isLoading={selectorTab === "existing" ? isLoadingDb : false}
+                    className="min-w-[260px] flex-1"
                   />
-                ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={
+                      (selectorTab === "current"
+                        ? currentSameAmountOnly
+                        : dbSameAmountOnly)
+                        ? "primary"
+                        : "secondary"
+                    }
+                    onClick={() => {
+                      if (selectorTab === "current") {
+                        setCurrentSameAmountOnly((prev) => !prev);
+                        return;
+                      }
+                      setDbPage(1);
+                      setDbSameAmountOnly((prev) => !prev);
+                    }}
+                    disabled={reimbursementBaseAmount <= 0}
+                  >
+                    Same outflow amount ({formatBase(reimbursementBaseAmount)})
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      if (selectorTab === "current") {
+                        setCurrentSearch("");
+                        setCurrentTypeFilter("all");
+                        setCurrentCategoryFilter("");
+                        setCurrentDateFrom("");
+                        setCurrentDateTo("");
+                        setCurrentSameAmountOnly(false);
+                        return;
+                      }
+                      setDbSearchInput("");
+                      setDbSearchQuery("");
+                      setDbWalletFilter("");
+                      setDbCategoryFilter("");
+                      setDbDateFrom("");
+                      setDbDateTo("");
+                      setDbSameAmountOnly(false);
+                      setDbPage(1);
+                    }}
+                  >
+                    Reset filters
+                  </Button>
+                </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div
+                  className={`grid grid-cols-1 gap-2 ${
+                    selectorTab === "existing" ? "md:grid-cols-5" : "md:grid-cols-4"
+                  }`}
+                >
+                  <Select
+                    value={selectorTab === "current" ? currentTypeFilter : "out"}
+                    onChange={(value) => {
+                      if (selectorTab === "current") {
+                        setCurrentTypeFilter(value as AmountType);
+                      }
+                    }}
+                    options={[
+                      { value: "all", label: "All types" },
+                      { value: "in", label: "In only" },
+                      { value: "out", label: "Out only" },
+                    ]}
+                    disabled={selectorTab === "existing"}
+                  />
+
+                  <Select
+                    value={selectorTab === "current" ? currentCategoryFilter : dbCategoryFilter}
+                    onChange={(value) => {
+                      if (selectorTab === "current") {
+                        setCurrentCategoryFilter(value);
+                      } else {
+                        setDbCategoryFilter(value);
+                      }
+                    }}
+                    options={categoryOptions}
+                  />
+
+                  {selectorTab === "existing" ? (
+                    <Select
+                      value={dbWalletFilter}
+                      onChange={setDbWalletFilter}
+                      options={walletOptions}
+                    />
+                  ) : null}
+
                   <DatePicker
                     value={selectorTab === "current" ? currentDateFrom : dbDateFrom}
                     onChange={(value) => {
@@ -976,16 +1097,25 @@ export function TripReimbursementSelectorModal({
                     </div>
                   ) : (
                     filteredCurrentImportItems.map((item) => (
+                      (() => {
+                        const stagedAlready = stagedAllocatedByBatchIndex.get(item.index) || 0;
+                        const selectableAmount = Math.max(
+                          Number(item.baseAmount || 0) - stagedAlready,
+                          0,
+                        );
+                        return (
                       <TransactionCard
                         key={toBatchKey(item.index)}
                         transaction={toImportCardTransaction(item)}
                         selected={selectedBatchIndices.has(item.index)}
                         selectionTone="success"
                         onToggleSelect={() =>
-                          handleToggleBatch(item.index, item.baseAmount)
+                          handleToggleBatch(item.index, selectableAmount)
                         }
                         wrapText
                       />
+                        );
+                      })()
                     ))
                   )
                 ) : isLoadingDb ? (
@@ -1029,6 +1159,8 @@ export function TripReimbursementSelectorModal({
                         categoryId: dbCategoryFilter,
                         dateFrom: dbDateFrom,
                         dateTo: dbDateTo,
+                        amountBaseEquals:
+                          dbSameAmountOnly ? reimbursementBaseAmount : undefined,
                       });
                     }}
                   >
@@ -1049,6 +1181,8 @@ export function TripReimbursementSelectorModal({
                         categoryId: dbCategoryFilter,
                         dateFrom: dbDateFrom,
                         dateTo: dbDateTo,
+                        amountBaseEquals:
+                          dbSameAmountOnly ? reimbursementBaseAmount : undefined,
                       });
                     }}
                   >
