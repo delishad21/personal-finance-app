@@ -716,6 +716,7 @@ export function ImportClient({
           }
           deferCellCommit
           lockLinkedReimbursements={false}
+          allowReservedCategorySelection={stage === "review"}
         />
       )}
 

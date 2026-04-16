@@ -856,6 +856,55 @@ export function TripImportReviewClient({
     setReimbursementTargetIndex(null);
   };
 
+  const handleTripImportLinkageChange = (
+    index: number,
+    linkage: TransactionLinkage | null,
+  ) => {
+    const current = tripImportEditedTransactions[index];
+    if (!current) return;
+
+    if (linkage?.type === "reimbursement") {
+      openReimbursementSelector(index);
+      return;
+    }
+
+    if (linkage?.type === "internal") {
+      if (isAutoFundingInTransaction(current)) {
+        showModal(
+          "warning",
+          "Funding In Locked",
+          "Funding In rows cannot be marked as internal.",
+        );
+        return;
+      }
+
+      setTripImportEditedTransactions((prev) => {
+        const next = [...prev];
+        const row = next[index];
+        const metadata =
+          row.metadata && typeof row.metadata === "object"
+            ? { ...(row.metadata as Record<string, unknown>) }
+            : {};
+        delete metadata.fundingOutConfig;
+        metadata.fundingInDisabled = true;
+        metadata.linkage = linkage as unknown as Record<string, unknown>;
+        next[index] = {
+          ...row,
+          entryTypeOverride:
+            row.entryTypeOverride === "reimbursement"
+              ? undefined
+              : row.entryTypeOverride,
+          linkage,
+          metadata,
+        };
+        return next;
+      });
+      return;
+    }
+
+    clearReimbursementOverride(index);
+  };
+
   const clearReimbursementOverride = (index: number) => {
     setTripImportEditedTransactions((prev) => {
       const next = [...prev];
@@ -1367,10 +1416,13 @@ export function TripImportReviewClient({
               onToggleSelection={handleTripImportToggleSelection}
               onAddCategoryClick={() => setIsAddCategoryModalOpen(true)}
               onBack={() => setTripImportStep("setup")}
+              onLinkageChange={handleTripImportLinkageChange}
+              onOpenReimbursementSelector={openReimbursementSelector}
               amountInHeader={`In (${tableCurrencyIndicator})`}
               amountOutHeader={`Out (${tableCurrencyIndicator})`}
               deferCellCommit
               lockLinkedReimbursements={false}
+              allowReservedCategorySelection
               renderExpandedActions={(index, transaction) => {
                 const isFundingOut =
                   transaction.entryTypeOverride === "funding_out";

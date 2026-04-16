@@ -28,6 +28,11 @@ interface TransactionLinkage {
   detectionReason?: string;
 }
 
+const toPositiveNumber = (value: unknown) => {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
 interface ParseResult {
   success: boolean;
   filename: string;
@@ -167,6 +172,68 @@ export async function parseFile(formData: FormData): Promise<ParseResult> {
             threshold: Number(userSettings?.autoLabelThreshold ?? 0.5),
           },
         );
+
+        const internalCategoryId = categoryMap.get("internal");
+        const reimbursementCategoryId = categoryMap.get("reimbursement");
+
+        // Keep category/linkage consistent so reimbursement/internal rows behave
+        // exactly like explicit linkage selections in review/commit flows.
+        result.transactions = result.transactions.map((transaction: any) => {
+          const next = { ...transaction };
+          const amountIn = toPositiveNumber(next.amountIn);
+          const currentLinkage =
+            next.linkage &&
+            typeof next.linkage === "object" &&
+            typeof (next.linkage as Record<string, unknown>).type === "string"
+              ? ({ ...(next.linkage as TransactionLinkage) } as TransactionLinkage)
+              : null;
+
+          if (!currentLinkage && internalCategoryId && next.categoryId === internalCategoryId) {
+            next.linkage = {
+              type: "internal",
+              autoDetected: true,
+              detectionReason: "Reserved category mapped to internal linkage",
+            } satisfies TransactionLinkage;
+            return next;
+          }
+
+          if (
+            !currentLinkage &&
+            reimbursementCategoryId &&
+            next.categoryId === reimbursementCategoryId &&
+            amountIn > 0
+          ) {
+            next.linkage = {
+              type: "reimbursement",
+              reimbursesAllocations: [],
+              leftoverAmount: amountIn,
+              leftoverCategoryId: null,
+              autoDetected: true,
+              detectionReason: "Reserved category mapped to reimbursement linkage",
+            } satisfies TransactionLinkage;
+            return next;
+          }
+
+          if (currentLinkage?.type === "reimbursement") {
+            const allocations = Array.isArray(currentLinkage.reimbursesAllocations)
+              ? currentLinkage.reimbursesAllocations
+              : [];
+            next.linkage = {
+              ...currentLinkage,
+              reimbursesAllocations: allocations,
+              leftoverAmount:
+                currentLinkage.leftoverAmount !== undefined
+                  ? Number(currentLinkage.leftoverAmount)
+                  : amountIn,
+              leftoverCategoryId:
+                currentLinkage.leftoverCategoryId !== undefined
+                  ? currentLinkage.leftoverCategoryId
+                  : null,
+            } satisfies TransactionLinkage;
+          }
+
+          return next;
+        });
       } catch (rulesError) {
         console.error("Failed to apply import rules in parse stage:", rulesError);
       }

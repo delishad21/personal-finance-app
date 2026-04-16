@@ -189,6 +189,7 @@ export function TransactionTable({
   amountOutHeader = "Out",
   deferCellCommit = false,
   lockLinkedReimbursements = true,
+  allowReservedCategorySelection = false,
   renderExpandedActions,
   reviewActionLeft,
 }: TransactionTableProps) {
@@ -688,6 +689,7 @@ export function TransactionTable({
               const isReimbursementLinkage =
                 linkageType === "reimbursement" || linkageType === "reimbursed";
               const isLockedByLinkage =
+                !allowReservedCategorySelection &&
                 !!linkageType &&
                 (!isReimbursementLinkage || lockLinkedReimbursements);
               const hasSuggestionMetadata = !!transaction.suggestionSource;
@@ -923,12 +925,64 @@ export function TransactionTable({
                         <CategorySelect
                           value={displayCategoryId}
                           categories={displayCategories}
-                          onChange={(categoryId) =>
-                            onUpdateTransaction(index, "categoryId", categoryId)
-                          }
+                          onChange={(categoryId) => {
+                            const isInternalSelection =
+                              categoryId === internalCategoryId ||
+                              categoryId === "__internal__";
+                            const isReimbursementSelection =
+                              categoryId === reimbursementCategoryId ||
+                              categoryId === "__reimbursement__";
+
+                            if (allowReservedCategorySelection && isInternalSelection) {
+                              if (onLinkageChange) {
+                                onLinkageChange(index, {
+                                  type: "internal",
+                                  autoDetected: false,
+                                });
+                              } else {
+                                onUpdateTransaction(index, "categoryId", internalCategoryId);
+                              }
+                              return;
+                            }
+
+                            if (
+                              allowReservedCategorySelection &&
+                              isReimbursementSelection
+                            ) {
+                              if (onOpenReimbursementSelector) {
+                                onOpenReimbursementSelector(index);
+                                return;
+                              }
+                              if (onLinkageChange) {
+                                onLinkageChange(index, {
+                                  type: "reimbursement",
+                                  reimbursesAllocations: [],
+                                });
+                                return;
+                              }
+                              onUpdateTransaction(
+                                index,
+                                "categoryId",
+                                reimbursementCategoryId,
+                              );
+                              return;
+                            }
+
+                            if (
+                              allowReservedCategorySelection &&
+                              transaction.linkage &&
+                              onLinkageChange
+                            ) {
+                              onLinkageChange(index, null);
+                            }
+
+                            onUpdateTransaction(index, "categoryId", categoryId);
+                          }}
                           onAddClick={onAddCategoryClick}
                           variant="borderless"
-                          excludeReserved={!transaction.linkage}
+                          excludeReserved={
+                            !allowReservedCategorySelection && !transaction.linkage
+                          }
                           dropdownPlacement="inline"
                           disabled={
                             showDuplicatesOnly ||

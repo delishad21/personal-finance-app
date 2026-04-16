@@ -167,7 +167,7 @@ export function EditTransactionModal({
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      let linkage: Transaction["linkage"] = null;
+      let linkage: Transaction["linkage"] | undefined = null;
       if (linkageType === "internal") {
         linkage = { type: "internal", autoDetected: false };
       } else if (linkageType === "reimbursement") {
@@ -178,6 +178,9 @@ export function EditTransactionModal({
           leftoverAmount: reimbursementLinkage?.leftoverAmount,
           leftoverCategoryId: reimbursementLinkage?.leftoverCategoryId ?? null,
         };
+      } else if (transaction.linkage?.type === "reimbursed") {
+        // Preserve existing reimbursed linkage unless explicitly cleared via linkage actions.
+        linkage = undefined;
       }
       const payload = {
         ...formData,

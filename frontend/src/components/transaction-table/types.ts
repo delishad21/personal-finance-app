@@ -119,6 +119,7 @@ export interface TransactionTableProps {
   amountOutHeader?: string;
   deferCellCommit?: boolean;
   lockLinkedReimbursements?: boolean;
+  allowReservedCategorySelection?: boolean;
   renderExpandedActions?: (
     index: number,
     transaction: Transaction,
