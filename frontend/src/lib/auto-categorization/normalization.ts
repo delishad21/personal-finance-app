@@ -2,6 +2,8 @@ const NOISE_PATTERNS = [
   /\b\d{6,}\b/g, // long refs
   /\b\d{4}-\d{4}-\d{4}-\d{4}\b/g, // card like
   /\*{2,}\d{2,}/g, // masked tails
+  /\b\d{1,2}(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/gi, // statement-style date token (e.g. 25APR)
+  /\bsi\s+ng\b/gi, // OCR split of "SINGAPORE"
   /\b(?:visa|mastercard|debit card transaction|card transaction)\b/gi,
   /\b(?:sgp|singapore)\b/gi,
 ];
