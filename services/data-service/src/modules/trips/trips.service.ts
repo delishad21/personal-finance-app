@@ -27,7 +27,7 @@ export class TripService {
     data: {
       name?: string;
       coverImageUrl?: string | null;
-      baseCurrency?: string;
+      baseCurrency?: string | null;
       startDate?: Date;
       endDate?: Date | null;
       status?: string;

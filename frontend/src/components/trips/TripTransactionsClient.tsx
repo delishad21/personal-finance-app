@@ -76,6 +76,7 @@ import { TripImportStatementModal } from "@/components/trips/TripImportStatement
 import { TripManualEntryModal } from "@/components/trips/TripManualEntryModal";
 import { TripReimbursementSelectorModal } from "@/components/trips/TripReimbursementSelectorModal";
 import { TripWalletModal } from "@/components/trips/TripWalletModal";
+import { buildTripImportPayload } from "@/components/trips/tripImportPayload";
 import type {
   ParseResult as ImportParseResult,
   Transaction as ImportTransaction,
@@ -1973,19 +1974,6 @@ export function TripTransactionsClient({
       return;
     }
 
-    let baseAmount = Number(manualEntryForm.baseAmount);
-    if (!(baseAmount > 0) && normalizedLocalCurrency === trip.baseCurrency) {
-      baseAmount = localAmount;
-    }
-    if (!(baseAmount > 0)) {
-      showModal(
-        "warning",
-        "Invalid Base Amount",
-        `Enter a base amount greater than 0 (${trip.baseCurrency}).`,
-      );
-      return;
-    }
-
     const fxRateValue = manualEntryForm.fxRate
       ? Number(manualEntryForm.fxRate)
       : null;
@@ -1994,6 +1982,23 @@ export function TripTransactionsClient({
         "warning",
         "Invalid FX Rate",
         "FX rate must be greater than 0.",
+      );
+      return;
+    }
+
+    let baseAmount = Number(manualEntryForm.baseAmount);
+    if (!(baseAmount > 0)) {
+      if (normalizedLocalCurrency === trip.baseCurrency) {
+        baseAmount = localAmount;
+      } else if (fxRateValue !== null) {
+        baseAmount = localAmount * fxRateValue;
+      }
+    }
+    if (!(baseAmount > 0)) {
+      showModal(
+        "warning",
+        "Invalid Base Amount",
+        `Enter a base amount greater than 0 (${trip.baseCurrency}).`,
       );
       return;
     }
@@ -2452,15 +2457,7 @@ export function TripTransactionsClient({
           walletId: importForm.walletId || null,
           parserId: importForm.parserId,
         },
-        selectedTransactions.map((tx) => ({
-          date: tx.date,
-          description: tx.description,
-          label: tx.label,
-          categoryId: tx.categoryId,
-          amountIn: tx.amountIn ?? undefined,
-          amountOut: tx.amountOut ?? undefined,
-          metadata: tx.metadata,
-        })),
+        selectedTransactions.map((tx) => buildTripImportPayload(tx)),
       );
       setImportResult(result);
       const [, nextFundings] = await Promise.all([

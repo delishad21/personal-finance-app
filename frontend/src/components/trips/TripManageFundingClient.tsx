@@ -1606,19 +1606,6 @@ export function TripManageFundingClient({
       return;
     }
 
-    let baseAmount = Number(manualEntryForm.baseAmount);
-    if (!(baseAmount > 0) && normalizedLocalCurrency === trip.baseCurrency) {
-      baseAmount = localAmount;
-    }
-    if (!(baseAmount > 0)) {
-      showModal(
-        "warning",
-        "Invalid Base Amount",
-        `Enter a base amount greater than 0 (${trip.baseCurrency}).`,
-      );
-      return;
-    }
-
     const fxRateValue = manualEntryForm.fxRate
       ? Number(manualEntryForm.fxRate)
       : null;
@@ -1627,6 +1614,23 @@ export function TripManageFundingClient({
         "warning",
         "Invalid FX Rate",
         "FX rate must be greater than 0.",
+      );
+      return;
+    }
+
+    let baseAmount = Number(manualEntryForm.baseAmount);
+    if (!(baseAmount > 0)) {
+      if (normalizedLocalCurrency === trip.baseCurrency) {
+        baseAmount = localAmount;
+      } else if (fxRateValue !== null) {
+        baseAmount = localAmount * fxRateValue;
+      }
+    }
+    if (!(baseAmount > 0)) {
+      showModal(
+        "warning",
+        "Invalid Base Amount",
+        `Enter a base amount greater than 0 (${trip.baseCurrency}).`,
       );
       return;
     }

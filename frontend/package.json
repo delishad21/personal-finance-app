@@ -12,7 +12,8 @@
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
     "prisma:seed": "tsx prisma/seed.ts",
-    "prisma:seed-categories": "tsx prisma/seed-categories.ts"
+    "prisma:seed-categories": "tsx prisma/seed-categories.ts",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.4.0",

@@ -20,6 +20,7 @@ import type {
   TransactionLinkage,
 } from "@/components/transaction-table/types";
 import { TripReimbursementSelectorModal } from "@/components/trips/TripReimbursementSelectorModal";
+import { buildTripImportPayload } from "@/components/trips/tripImportPayload";
 import { AddCategoryModal } from "@/components/ui/AddCategoryModal";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -1168,79 +1169,11 @@ export function TripImportReviewClient({
           walletId: isStatementWalletRouted ? null : importForm.walletId || null,
           parserId: importForm.parserId,
         },
-        selectedTransactions.map(({ transaction }) => {
-          const fundingOutDraft = readFundingOutDraft(transaction);
-          const isFundingIn = isAutoFundingInTransaction(transaction);
-          const isFundingOut = transaction.entryTypeOverride === "funding_out";
-          const isReimbursement =
-            !isFundingIn &&
-            (transaction.entryTypeOverride === "reimbursement" ||
-              transaction.linkage?.type === "reimbursement");
-          const reimbursementLinkage =
-            transaction.linkage?.type === "reimbursement"
-              ? transaction.linkage
-              : null;
-          return {
-            date: transaction.date,
-            description: transaction.description,
-            label: transaction.label,
-            categoryId: transaction.categoryId,
-            entryType: isFundingIn
-              ? "funding_in"
-              : isFundingOut
-                ? "funding_out"
-                : isReimbursement
-                  ? "reimbursement"
-                  : undefined,
-            linkage:
-              isReimbursement && reimbursementLinkage
-                ? {
-                    type: "reimbursement",
-                    reimbursesAllocations: (
-                      reimbursementLinkage.reimbursesAllocations || []
-                    ).map((item) => ({
-                      transactionId: item.transactionId,
-                      pendingBatchIndex: item.pendingBatchIndex,
-                      amountBase: Number(
-                        (item as any).amountBase || (item as any).amount || 0,
-                      ),
-                    })),
-                    reimbursementBaseAmount:
-                      reimbursementLinkage.reimbursementBaseAmount,
-                    reimbursingFxRate: reimbursementLinkage.reimbursingFxRate,
-                    leftoverCategoryId:
-                      reimbursementLinkage.leftoverCategoryId ?? null,
-                  }
-                : null,
-            amountIn: transaction.amountIn ?? undefined,
-            amountOut: transaction.amountOut ?? undefined,
-            fundingOut:
-              isFundingOut && fundingOutDraft
-                ? {
-                    destinationType: fundingOutDraft.destinationType,
-                    destinationTripId:
-                      fundingOutDraft.destinationType === "trip"
-                        ? fundingOutDraft.destinationTripId || null
-                        : null,
-                    destinationCurrency:
-                      fundingOutDraft.destinationCurrency || null,
-                    destinationAmount:
-                      fundingOutDraft.inputMode === "amount"
-                        ? Number(fundingOutDraft.destinationAmount || 0) || null
-                        : null,
-                    fxRate:
-                      fundingOutDraft.inputMode === "fxRate"
-                        ? Number(fundingOutDraft.fxRate || 0) || null
-                        : null,
-                    feeAmount:
-                      Number(fundingOutDraft.feeAmount || 0) || null,
-                    feeCurrency:
-                      fundingOutDraft.feeCurrency || trip.baseCurrency,
-                  }
-                : null,
-            metadata: transaction.metadata,
-          };
-        }),
+        selectedTransactions.map(({ transaction }) =>
+          buildTripImportPayload(transaction, {
+            fundingOutDraft: readFundingOutDraft(transaction),
+          }),
+        ),
       );
 
       router.push(`/trips/${trip.id}/funding/review`);

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { TripService } from "./trips.service";
+import { buildFundingUpdatePayload } from "./trips.accounting";
 
 export const tripsRouter = Router();
 
@@ -8,7 +9,7 @@ const TripCreateSchema = z.object({
   userId: z.string(),
   name: z.string().min(1),
   coverImageUrl: z.string().optional().nullable(),
-  baseCurrency: z.string().default("SGD"),
+  baseCurrency: z.string().optional().nullable(),
   startDate: z.string().transform((value) => new Date(value)),
   endDate: z
     .string()
@@ -23,7 +24,7 @@ const TripUpdateSchema = z.object({
   userId: z.string(),
   name: z.string().min(1).optional(),
   coverImageUrl: z.string().optional().nullable(),
-  baseCurrency: z.string().optional(),
+  baseCurrency: z.string().optional().nullable(),
   startDate: z
     .string()
     .optional()
@@ -379,7 +380,7 @@ tripsRouter.post("/", async (req: Request, res: Response) => {
     const trip = await TripService.createTrip(input.userId, {
       name: input.name,
       coverImageUrl: input.coverImageUrl ?? null,
-      baseCurrency: input.baseCurrency,
+      baseCurrency: input.baseCurrency ?? "",
       startDate: input.startDate,
       endDate: input.endDate ?? null,
       status: input.status ?? undefined,
@@ -592,17 +593,17 @@ tripsRouter.patch("/:id/fundings/:fundingId", async (req: Request, res: Response
       return res.status(400).json({ error: "Missing tripId or fundingId" });
     }
 
-    const funding = await TripService.updateFunding(input.userId, tripId, fundingId, {
+    const funding = await TripService.updateFunding(input.userId, tripId, fundingId, buildFundingUpdatePayload({
       walletId: input.walletId,
       sourceCurrency: input.sourceCurrency,
       sourceAmount: input.sourceAmount,
       destinationCurrency: input.destinationCurrency,
       destinationAmount: input.destinationAmount,
-      fxRate: input.fxRate ?? null,
-      feeAmount: input.feeAmount ?? null,
-      feeCurrency: input.feeCurrency ?? null,
-      metadata: input.metadata ?? null,
-    });
+      fxRate: input.fxRate,
+      feeAmount: input.feeAmount,
+      feeCurrency: input.feeCurrency,
+      metadata: input.metadata,
+    }));
     res.json({
       funding: funding.funding,
       propagationTrace: funding.propagationTrace ?? null,

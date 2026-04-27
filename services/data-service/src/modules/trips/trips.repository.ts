@@ -1,6 +1,19 @@
 import prisma from "../../lib/prisma";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
+import {
+  calculateReimbursementLeftoverBase,
+  collectImpactedReimbursementEntryIds,
+  hasFundingCoreValueChanged,
+  normalizeCurrencyCode,
+  normalizeOptionalCurrencyUpdate,
+  normalizeFundingValues as normalizeAccountingFundingValues,
+  resolveFundingOutFeeBaseAmount,
+  resolveTripImportBaseAmount,
+  shouldPreserveFundingBaseAmount,
+  validateFundingInBankMatch,
+  validateFundingOutFeeCurrency,
+} from "./trips.accounting";
 
 type PropagationTraceStep = {
   phase: "recalculate_wallet" | "sync_linked_fundings";
@@ -153,7 +166,7 @@ export class TripRepository {
   private static resolveFundingFeeBaseAmount(input: {
     feeAmount: number;
     feeCurrency: string;
-    baseCurrency: string;
+    baseCurrency?: string | null;
     sourceCurrency: string;
     destinationCurrency: string;
     fxRate: number | null;
@@ -186,44 +199,6 @@ export class TripRepository {
     return feeAmount;
   }
 
-  private static resolveFundingOutFeeBaseAmount(input: {
-    feeAmount: number;
-    feeCurrency: string;
-    baseCurrency: string;
-    sourceCurrency: string;
-    destinationCurrency: string;
-    sourceAmount: number;
-    sourceBaseAmount: number;
-    fxRate: number;
-  }) {
-    const feeAmount = Number(input.feeAmount || 0);
-    if (!(feeAmount > 0)) return 0;
-
-    const feeCurrency = String(input.feeCurrency || "").toUpperCase();
-    const baseCurrency = String(input.baseCurrency || "").toUpperCase();
-    const sourceCurrency = String(input.sourceCurrency || "").toUpperCase();
-    const destinationCurrency = String(input.destinationCurrency || "").toUpperCase();
-    const sourceAmount = Number(input.sourceAmount || 0);
-    const sourceBaseAmount = Number(input.sourceBaseAmount || 0);
-    const fxRate = Number(input.fxRate || 0);
-
-    if (feeCurrency === baseCurrency) return feeAmount;
-
-    const sourceToBaseRate =
-      sourceAmount > 0 && sourceBaseAmount > 0
-        ? sourceBaseAmount / sourceAmount
-        : 1;
-
-    if (feeCurrency === sourceCurrency) {
-      return feeAmount * sourceToBaseRate;
-    }
-    if (feeCurrency === destinationCurrency && fxRate > 0) {
-      return feeAmount * fxRate * sourceToBaseRate;
-    }
-
-    return feeAmount * sourceToBaseRate;
-  }
-
   private static async getUserBaseCurrency(userId: string) {
     const [row] = await prisma.$queryRaw<Array<{ currency: string | null }>>`
       SELECT currency
@@ -231,7 +206,7 @@ export class TripRepository {
       WHERE user_id = ${userId}
       LIMIT 1
     `;
-    return String(row?.currency || "SGD").toUpperCase();
+    return normalizeCurrencyCode(row?.currency, "SGD");
   }
 
   private static buildTripCategoryFilterSql(categoryId: string) {
@@ -258,138 +233,9 @@ export class TripRepository {
     feeAmount?: number | null;
     feeCurrency?: string | null;
     baseCurrency: string;
+    baseAmount?: number | null;
   }) {
-    const sourceCurrency = String(input.sourceCurrency || "").toUpperCase();
-    const destinationCurrency = String(input.destinationCurrency || "").toUpperCase();
-    const baseCurrency = String(input.baseCurrency || "SGD").toUpperCase();
-    const sourceAmount = Number(input.sourceAmount || 0);
-
-    if (!sourceCurrency || !destinationCurrency) {
-      throw new Error("Source and destination currencies are required.");
-    }
-    if (!(sourceAmount > 0)) {
-      throw new Error("Source amount must be greater than 0.");
-    }
-
-    const rawFeeAmount = Number(input.feeAmount || 0);
-    const feeAmount = rawFeeAmount > 0 ? rawFeeAmount : 0;
-    const feeCurrency = feeAmount
-      ? String(input.feeCurrency || sourceCurrency).toUpperCase()
-      : null;
-
-    if (
-      feeCurrency &&
-      feeCurrency !== sourceCurrency &&
-      feeCurrency !== destinationCurrency
-    ) {
-      throw new Error(
-        "Fee currency must be either source currency or destination currency.",
-      );
-    }
-
-    const requestedDestinationAmount =
-      input.destinationAmount === null || input.destinationAmount === undefined
-        ? null
-        : Number(input.destinationAmount);
-    const requestedFxRate =
-      input.fxRate === null || input.fxRate === undefined
-        ? null
-        : Number(input.fxRate);
-
-    let fxRate = 1;
-    let destinationAmount = requestedDestinationAmount ?? 0;
-    let feeInDestination = 0;
-
-    if (sourceCurrency === destinationCurrency) {
-      fxRate = 1;
-      feeInDestination = feeAmount;
-      const expectedDestination = sourceAmount - feeInDestination;
-      if (!(expectedDestination > 0)) {
-        throw new Error("Fee exceeds source amount.");
-      }
-
-      if (requestedDestinationAmount !== null) {
-        if (Math.abs(requestedDestinationAmount - expectedDestination) > 0.01) {
-          throw new Error(
-            "For same-currency funding, destination amount must equal source amount minus fee.",
-          );
-        }
-        destinationAmount = requestedDestinationAmount;
-      } else {
-        destinationAmount = expectedDestination;
-      }
-    } else {
-      if (requestedFxRate !== null && requestedDestinationAmount !== null) {
-        const provisionalFeeInDestination =
-          feeAmount > 0 && feeCurrency === sourceCurrency
-            ? feeAmount / requestedFxRate
-            : feeAmount;
-        const expectedSource =
-          (requestedDestinationAmount + provisionalFeeInDestination) *
-          requestedFxRate;
-        if (Math.abs(expectedSource - sourceAmount) > 0.01) {
-          throw new Error(
-            "Provide either destination amount or FX rate, or ensure both are consistent with source and fee.",
-          );
-        }
-        fxRate = requestedFxRate;
-        destinationAmount = requestedDestinationAmount;
-        feeInDestination = provisionalFeeInDestination;
-      } else if (requestedFxRate !== null) {
-        if (!(requestedFxRate > 0)) {
-          throw new Error("FX rate must be greater than 0.");
-        }
-        fxRate = requestedFxRate;
-        feeInDestination =
-          feeAmount > 0 && feeCurrency === sourceCurrency
-            ? feeAmount / fxRate
-            : feeAmount;
-        destinationAmount = sourceAmount / fxRate - feeInDestination;
-      } else if (requestedDestinationAmount !== null) {
-        if (!(requestedDestinationAmount > 0)) {
-          throw new Error("Destination amount must be greater than 0.");
-        }
-        destinationAmount = requestedDestinationAmount;
-        feeInDestination =
-          feeAmount > 0 && feeCurrency === destinationCurrency
-            ? feeAmount
-            : 0;
-        const denominator = destinationAmount + feeInDestination;
-        if (!(denominator > 0)) {
-          throw new Error("Destination amount must remain greater than 0.");
-        }
-        fxRate = sourceAmount / denominator;
-      } else {
-        throw new Error("Either destination amount or FX rate is required.");
-      }
-    }
-
-    if (!(destinationAmount > 0)) {
-      throw new Error(
-        "Destination amount must remain greater than 0 after fee deduction.",
-      );
-    }
-    if (!(fxRate > 0)) {
-      throw new Error("FX rate must be greater than 0.");
-    }
-
-    let baseAmount = sourceAmount;
-    if (sourceCurrency === baseCurrency) {
-      baseAmount = sourceAmount;
-    } else if (destinationCurrency === baseCurrency) {
-      baseAmount = destinationAmount + feeInDestination;
-    }
-
-    return {
-      sourceCurrency,
-      sourceAmount,
-      destinationCurrency,
-      destinationAmount,
-      fxRate,
-      feeAmount: feeAmount > 0 ? feeAmount : null,
-      feeCurrency: feeAmount > 0 ? feeCurrency : null,
-      baseAmount,
-    };
+    return normalizeAccountingFundingValues(input);
   }
 
   private static async normalizeFundingOutConfig(
@@ -460,15 +306,12 @@ export class TripRepository {
           ).toUpperCase()
         : null;
 
-    if (
-      feeCurrency &&
-      feeCurrency !== sourceCurrency &&
-      feeCurrency !== destinationCurrency
-    ) {
-      throw new Error(
-        "Funding out fee currency must be either the source or destination currency.",
-      );
-    }
+    validateFundingOutFeeCurrency({
+      feeCurrency,
+      sourceCurrency,
+      destinationCurrency,
+      tripBaseCurrency,
+    });
 
     if (linkedBankTransactionId) {
       const linkedRows = await tx.$queryRaw<Array<{ amountIn: unknown }>>`
@@ -538,6 +381,20 @@ export class TripRepository {
       throw new Error("Destination trip must be selected for trip funding out.");
     }
 
+    const feeBaseAmount =
+      feeAmount && feeCurrency
+        ? resolveFundingOutFeeBaseAmount({
+            feeAmount,
+            feeCurrency,
+            baseCurrency: tripBaseCurrency,
+            sourceCurrency,
+            destinationCurrency,
+            sourceAmount,
+            sourceBaseAmount,
+            fxRate,
+          })
+        : null;
+
     return {
       destinationType,
       destinationTripId,
@@ -547,6 +404,7 @@ export class TripRepository {
       fxRate,
       feeAmount,
       feeCurrency,
+      feeBaseAmount,
     };
   }
 
@@ -1702,6 +1560,19 @@ export class TripRepository {
       );
     }
 
+    const previousAllocationRows = await tx.$queryRaw<
+      Array<{ reimbursedEntryId: string }>
+    >`
+      SELECT reimbursed_entry_id AS "reimbursedEntryId"
+      FROM trip_reimbursement_allocations
+      WHERE trip_id = ${tripId} AND reimbursement_entry_id = ${reimbursementEntryId}
+    `;
+    const impactedEntryIds = collectImpactedReimbursementEntryIds({
+      reimbursementEntryId,
+      previousTargetIds: previousAllocationRows.map((row) => row.reimbursedEntryId),
+      nextTargetIds: normalized.map((row) => row.transactionId),
+    });
+
     await tx.$executeRaw`
       DELETE FROM trip_reimbursement_allocations
       WHERE trip_id = ${tripId} AND reimbursement_entry_id = ${reimbursementEntryId}
@@ -1832,9 +1703,10 @@ export class TripRepository {
         reimbursingFxRate: Number(row.reimbursingFxRate || 0),
         reimbursedFxRate: Number(row.reimbursedFxRate || 0),
       })),
-      leftoverBaseAmount: Number(
-        Math.max(reimbursementBase - allocatedBase, 0).toFixed(4),
-      ),
+      leftoverBaseAmount: calculateReimbursementLeftoverBase({
+        reimbursementBaseAmount: reimbursementBase,
+        allocationBaseAmounts: [allocatedBase],
+      }),
       leftoverCategoryId: leftoverCategoryId ?? null,
     } as TripEntryLinkage;
 
@@ -1844,8 +1716,8 @@ export class TripRepository {
       WHERE id = ${reimbursementEntryId} AND trip_id = ${tripId}
     `;
 
-    const impactedTargetIds = Array.from(
-      new Set(allocationRows.map((row) => row.reimbursedEntryId)),
+    const impactedTargetIds = impactedEntryIds.filter(
+      (id) => id !== reimbursementEntryId,
     );
     for (const targetId of impactedTargetIds) {
       const targetMetadataRow = await tx.$queryRaw<Array<{ metadata: unknown; localCurrency: string }>>`
@@ -1883,22 +1755,23 @@ export class TripRepository {
         WHERE a.trip_id = ${tripId} AND a.reimbursed_entry_id = ${targetId}
       `;
 
-      targetMetadata.linkage =
-        targetAllocRows.length > 0
-          ? ({
-              type: "reimbursed",
-              reimbursedByAllocations: targetAllocRows.map((row) => ({
-                transactionId: row.reimbursementEntryId,
-                amountBase: Number(row.amountBase || 0),
-                reimbursingLocalAmount: Number(row.reimbursingLocalAmount || 0),
-                reimbursedLocalAmount: Number(row.reimbursedLocalAmount || 0),
-                reimbursingCurrency: row.reimbursingCurrency,
-                reimbursedCurrency: targetMetadataRow[0]?.localCurrency,
-                reimbursingFxRate: Number(row.reimbursingFxRate || 0),
-                reimbursedFxRate: Number(row.reimbursedFxRate || 0),
-              })),
-            } satisfies TripEntryLinkage)
-          : null;
+      if (targetAllocRows.length > 0) {
+        targetMetadata.linkage = {
+          type: "reimbursed",
+          reimbursedByAllocations: targetAllocRows.map((row) => ({
+            transactionId: row.reimbursementEntryId,
+            amountBase: Number(row.amountBase || 0),
+            reimbursingLocalAmount: Number(row.reimbursingLocalAmount || 0),
+            reimbursedLocalAmount: Number(row.reimbursedLocalAmount || 0),
+            reimbursingCurrency: row.reimbursingCurrency,
+            reimbursedCurrency: targetMetadataRow[0]?.localCurrency,
+            reimbursingFxRate: Number(row.reimbursingFxRate || 0),
+            reimbursedFxRate: Number(row.reimbursedFxRate || 0),
+          })),
+        } satisfies TripEntryLinkage;
+      } else {
+        delete targetMetadata.linkage;
+      }
 
       await tx.$executeRaw`
         UPDATE trip_entries
@@ -1940,7 +1813,11 @@ export class TripRepository {
     status?: string;
     notes?: string | null;
   }) {
-    const baseCurrency = await TripRepository.getUserBaseCurrency(userId);
+    const userBaseCurrency = await TripRepository.getUserBaseCurrency(userId);
+    const baseCurrency = normalizeCurrencyCode(
+      data.baseCurrency,
+      userBaseCurrency,
+    );
     const id = randomUUID();
     const [trip] = await prisma.$queryRaw<any[]>`
       INSERT INTO trips (
@@ -2034,7 +1911,7 @@ export class TripRepository {
     data: {
       name?: string;
       coverImageUrl?: string | null;
-      baseCurrency?: string;
+      baseCurrency?: string | null;
       startDate?: Date;
       endDate?: Date | null;
       status?: string;
@@ -2051,14 +1928,14 @@ export class TripRepository {
       throw new Error("Trip not found or unauthorized");
     }
 
-    const baseCurrency = await TripRepository.getUserBaseCurrency(userId);
+    const baseCurrency = normalizeOptionalCurrencyUpdate(data.baseCurrency);
 
     const [trip] = await prisma.$queryRaw<any[]>`
       UPDATE trips
       SET
         name = COALESCE(${data.name ?? null}, name),
         cover_image_url = ${data.coverImageUrl === undefined ? Prisma.sql`cover_image_url` : data.coverImageUrl},
-        base_currency = ${baseCurrency},
+        base_currency = ${baseCurrency ? baseCurrency : Prisma.sql`base_currency`},
         start_date = COALESCE(${data.startDate ?? null}, start_date),
         end_date = ${data.endDate === undefined ? Prisma.sql`end_date` : data.endDate},
         status = COALESCE(${data.status ?? null}, status),
@@ -2371,6 +2248,9 @@ export class TripRepository {
         id: string;
         sourceType: string;
         bankTransactionId: string | null;
+        sourceAmount: unknown;
+        sourceCurrency: string;
+        baseCurrency: string;
         metadata: unknown;
       }>
     >`
@@ -2378,6 +2258,9 @@ export class TripRepository {
         tf.id,
         tf.source_type AS "sourceType",
         tf.bank_transaction_id AS "bankTransactionId",
+        tf.source_amount AS "sourceAmount",
+        tf.source_currency AS "sourceCurrency",
+        t.base_currency AS "baseCurrency",
         tf.metadata
       FROM trip_fundings tf
       INNER JOIN trips t ON t.id = tf.trip_id
@@ -2398,16 +2281,33 @@ export class TripRepository {
         ? { ...(funding.metadata as Record<string, unknown>) }
         : {};
 
-    const validateTransactionOwnership = async (transactionId: string) => {
-      const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-        SELECT id
+    const getOwnedBankTransaction = async (transactionId: string) => {
+      const rows = await prisma.$queryRaw<
+        Array<{ id: string; amountOut: unknown; currency: string | null }>
+      >`
+        SELECT
+          id,
+          amount_out AS "amountOut",
+          currency
         FROM transactions
         WHERE id = ${transactionId} AND user_id = ${userId}
         LIMIT 1
       `;
-      if (!rows[0]) {
+      const transaction = rows[0];
+      if (!transaction) {
         throw new Error("Selected bank transaction not found or unauthorized");
       }
+      return transaction;
+    };
+
+    const validateSelectedBankTransaction = async (transactionId: string) => {
+      const transaction = await getOwnedBankTransaction(transactionId);
+      validateFundingInBankMatch({
+        fundingSourceAmount: Number(funding.sourceAmount || 0),
+        fundingSourceCurrency: funding.sourceCurrency,
+        bankAmountOut: Number(transaction.amountOut || 0),
+        bankCurrency: transaction.currency || funding.baseCurrency,
+      });
     };
 
     const ensureNotAlreadyLinked = async (transactionId: string) => {
@@ -2447,7 +2347,7 @@ export class TripRepository {
       if (!selectedId) {
         throw new Error("No suggested transaction available to accept.");
       }
-      await validateTransactionOwnership(selectedId);
+      await validateSelectedBankTransaction(selectedId);
       await ensureNotAlreadyLinked(selectedId);
       nextBankTransactionId = selectedId;
       TripRepository.setFundingReviewState(metadata, "linked_confirmed", {
@@ -2458,7 +2358,7 @@ export class TripRepository {
       if (!input.bankTransactionId) {
         throw new Error("Replacement requires a selected transaction.");
       }
-      await validateTransactionOwnership(input.bankTransactionId);
+      await validateSelectedBankTransaction(input.bankTransactionId);
       await ensureNotAlreadyLinked(input.bankTransactionId);
       nextBankTransactionId = input.bankTransactionId;
       TripRepository.setFundingReviewState(metadata, "linked_confirmed", {
@@ -2648,6 +2548,7 @@ export class TripRepository {
         metadata: unknown;
         bankTransactionDate: Date | null;
         baseCurrency: string;
+        baseAmount: number;
       }>
     >`
       SELECT tf.id
@@ -2664,6 +2565,7 @@ export class TripRepository {
       , tf.metadata
       , bt.date AS "bankTransactionDate"
       , t.base_currency AS "baseCurrency"
+      , tf.base_amount AS "baseAmount"
       FROM trip_fundings tf
       INNER JOIN trips t ON t.id = tf.trip_id
       LEFT JOIN transactions bt ON bt.id = tf.bank_transaction_id
@@ -2738,6 +2640,31 @@ export class TripRepository {
       current.bankTransactionId && targetWalletCurrency
         ? targetWalletCurrency
         : input.destinationCurrency ?? current.destinationCurrency;
+    const fundingCoreValueChanged = hasFundingCoreValueChanged({
+      current: {
+        sourceCurrency: current.sourceCurrency,
+        sourceAmount: Number(current.sourceAmount || 0),
+        destinationCurrency: current.destinationCurrency,
+        destinationAmount: Number(current.destinationAmount || 0),
+        fxRate: current.fxRate ?? null,
+      },
+      next: {
+        sourceCurrency: input.sourceCurrency,
+        sourceAmount: input.sourceAmount,
+        destinationCurrency:
+          current.bankTransactionId && targetWalletCurrency
+            ? targetWalletCurrency
+            : input.destinationCurrency,
+        destinationAmount: input.destinationAmount,
+        fxRate: input.fxRate,
+      },
+    });
+    const shouldPreserveExistingBaseAmount = shouldPreserveFundingBaseAmount({
+      fundingCoreValueChanged,
+      sourceCurrency: input.sourceCurrency ?? current.sourceCurrency,
+      destinationCurrency: destinationCurrencyForNormalization,
+      baseCurrency: current.baseCurrency,
+    });
 
     const normalized = TripRepository.normalizeFundingValues({
       sourceCurrency: input.sourceCurrency ?? current.sourceCurrency,
@@ -2754,6 +2681,7 @@ export class TripRepository {
       feeCurrency:
         input.feeCurrency === undefined ? (current.feeCurrency ?? null) : input.feeCurrency,
       baseCurrency: current.baseCurrency,
+      baseAmount: shouldPreserveExistingBaseAmount ? current.baseAmount : null,
     });
 
     const existingMetadata: Record<string, unknown> =
@@ -3199,47 +3127,10 @@ export class TripRepository {
       statementCurrency: string;
       metadata: Record<string, any>;
     }) => {
-      const localCurrency = toCurrency(params.localCurrency, baseCurrency);
-      const statementCurrency = toCurrency(params.statementCurrency, baseCurrency);
-      const manualBaseAmount = toNumber(params.metadata.manualBaseAmount);
-      const manualFxRate = toNumber(params.metadata.manualFxRate);
-
-      if (manualBaseAmount && manualBaseAmount > 0) {
-        return manualBaseAmount;
-      }
-      if (manualFxRate && manualFxRate > 0) {
-        return params.localAmount * manualFxRate;
-      }
-
-      if (localCurrency === baseCurrency) return params.localAmount;
-      if (statementCurrency === baseCurrency) return params.statementAmount;
-
-      const fxRate = toNumber(params.metadata.fxRate);
-      const fxBaseCurrency = toCurrency(
-        params.metadata.fxBaseCurrency || params.metadata.baseCurrency,
-        "",
-      );
-      const fxQuoteCurrency = toCurrency(
-        params.metadata.fxQuoteCurrency || params.metadata.quoteCurrency,
-        "",
-      );
-
-      if (fxRate && fxRate > 0) {
-        if (fxBaseCurrency === baseCurrency && fxQuoteCurrency === localCurrency) {
-          return params.localAmount / fxRate;
-        }
-        if (fxBaseCurrency === localCurrency && fxQuoteCurrency === baseCurrency) {
-          return params.localAmount * fxRate;
-        }
-        if (fxBaseCurrency === baseCurrency && fxQuoteCurrency === statementCurrency) {
-          return params.statementAmount / fxRate;
-        }
-        if (fxBaseCurrency === statementCurrency && fxQuoteCurrency === baseCurrency) {
-          return params.statementAmount * fxRate;
-        }
-      }
-
-      return params.statementAmount > 0 ? params.statementAmount : params.localAmount;
+      return resolveTripImportBaseAmount({
+        ...params,
+        baseCurrency,
+      });
     };
 
     const providerKeyword = parserProvider.toLowerCase();
@@ -3892,8 +3783,8 @@ export class TripRepository {
               ${localAmount},
               ${fxRate},
               ${baseAmount},
-              NULL,
-              NULL,
+              ${normalizedFundingOut.feeAmount ?? null},
+              ${normalizedFundingOut.feeCurrency ?? null},
               NULL,
               NULL,
               ${{
@@ -3909,6 +3800,7 @@ export class TripRepository {
                   fxRate: normalizedFundingOut.fxRate,
                   feeAmount: feeAmount ?? null,
                   feeCurrency: feeCurrency ?? null,
+                  feeBaseAmount: normalizedFundingOut.feeBaseAmount,
                 },
                 originalDescription: transaction.description,
                 originalDate: transaction.date,
@@ -4136,6 +4028,7 @@ export class TripRepository {
                 feeAmount: rawFeeAmount > 0 ? rawFeeAmount : null,
                 feeCurrency: rawFeeCurrency,
                 baseCurrency,
+                baseAmount: baseAmountFrom,
               });
             } catch {
               normalizedConversion = TripRepository.normalizeFundingValues({
@@ -4147,12 +4040,10 @@ export class TripRepository {
                 feeAmount: null,
                 feeCurrency: null,
                 baseCurrency,
+                baseAmount: baseAmountFrom,
               });
             }
-            normalizedConversion = {
-              ...normalizedConversion,
-              baseAmount: baseAmountFrom,
-            };
+            normalizedConversion = { ...normalizedConversion, baseAmount: baseAmountFrom };
 
             const conversionOutId = randomUUID();
             const conversionFundingId = randomUUID();
@@ -4379,6 +4270,13 @@ export class TripRepository {
                 : destinationAmount
               : destinationAmount +
                 (feeAmount > 0 && feeCurrency === sourceCurrency ? feeAmount : 0);
+            const baseAmount = resolveBaseAmount({
+              localAmount: destinationAmount,
+              localCurrency: destinationCurrency,
+              statementAmount: sourceAmount,
+              statementCurrency: sourceCurrency,
+              metadata,
+            });
             const normalizedFunding = TripRepository.normalizeFundingValues({
               sourceCurrency,
               sourceAmount,
@@ -4388,6 +4286,7 @@ export class TripRepository {
               feeAmount,
               feeCurrency: feeAmount > 0 ? feeCurrency : null,
               baseCurrency,
+              baseAmount,
             });
             const candidateMatches = await findFundingTransactionCandidates({
               date: new Date(transaction.date),
@@ -5377,6 +5276,7 @@ export class TripRepository {
             fxRate: normalizedFundingOut.fxRate,
             feeAmount: normalizedFundingOut.feeAmount,
             feeCurrency: normalizedFundingOut.feeCurrency,
+            feeBaseAmount: normalizedFundingOut.feeBaseAmount,
             autoLinkedBankCredit:
               normalizedFundingOut.bankTransactionId === source.id,
           };
@@ -5432,8 +5332,8 @@ export class TripRepository {
             ${baseAmount},
             1,
             ${baseAmount},
-            NULL,
-            NULL,
+            ${normalizedFundingOut?.feeAmount ?? null},
+            ${normalizedFundingOut?.feeCurrency ?? null},
             ${resolvedType === "spending" ? input.categoryId ?? null : null},
             NULL,
             ${metadataPayload},
@@ -5604,6 +5504,7 @@ export class TripRepository {
             fxRate: normalizedFundingOut.fxRate,
             feeAmount: normalizedFundingOut.feeAmount,
             feeCurrency: normalizedFundingOut.feeCurrency,
+            feeBaseAmount: normalizedFundingOut.feeBaseAmount,
           }
         : null;
 
@@ -5663,8 +5564,12 @@ export class TripRepository {
           ${input.localAmount},
           ${resolvedFxRate},
           ${input.baseAmount},
-          ${input.type === "funding_out" ? null : (input.feeAmount ?? null)},
-          ${input.type === "funding_out" ? null : (input.feeCurrency ?? null)},
+          ${input.type === "funding_out"
+            ? (normalizedFundingOut?.feeAmount ?? input.feeAmount ?? null)
+            : (input.feeAmount ?? null)},
+          ${input.type === "funding_out"
+            ? (normalizedFundingOut?.feeCurrency ?? input.feeCurrency ?? null)
+            : (input.feeCurrency ?? null)},
           ${input.type === "spending" ? input.categoryId ?? null : null},
           NULL,
           ${metadataPayload as Prisma.InputJsonValue},
@@ -6289,6 +6194,18 @@ export class TripRepository {
     if (!entry) throw new Error("Trip entry not found or unauthorized");
 
     await prisma.$transaction(async (tx) => {
+      const affectedAllocationRows = await tx.$queryRaw<
+        Array<{ reimbursementEntryId: string; reimbursedEntryId: string }>
+      >`
+        SELECT
+          reimbursement_entry_id AS "reimbursementEntryId",
+          reimbursed_entry_id AS "reimbursedEntryId"
+        FROM trip_reimbursement_allocations
+        WHERE
+          trip_id = ${tripId}
+          AND (reimbursement_entry_id = ${entryId} OR reimbursed_entry_id = ${entryId})
+      `;
+
       await tx.$executeRaw`
         DELETE FROM trip_reimbursement_allocations
         WHERE
@@ -6296,21 +6213,26 @@ export class TripRepository {
           AND (reimbursement_entry_id = ${entryId} OR reimbursed_entry_id = ${entryId})
       `;
 
+      const impactedIds = Array.from(
+        new Set(
+          [
+            entryId,
+            ...affectedAllocationRows.flatMap((row) => [
+              row.reimbursementEntryId,
+              row.reimbursedEntryId,
+            ]),
+          ].filter(Boolean),
+        ),
+      );
       const [allRows] = await Promise.all([
         tx.$queryRaw<Array<{ id: string; metadata: unknown }>>`
           SELECT id, metadata
           FROM trip_entries
-          WHERE trip_id = ${tripId}
-            AND id IN (
-              SELECT reimbursement_entry_id FROM trip_reimbursement_allocations WHERE trip_id = ${tripId}
-              UNION
-              SELECT reimbursed_entry_id FROM trip_reimbursement_allocations WHERE trip_id = ${tripId}
-            )
+          WHERE trip_id = ${tripId} AND id IN (${Prisma.join(impactedIds)})
         `,
       ]);
 
       // Rebuild linkages for impacted rows from remaining allocation records.
-      const impactedIds = new Set<string>([entryId, ...allRows.map((row) => row.id)]);
       for (const id of impactedIds) {
         const metadata =
           allRows.find((row) => row.id === id)?.metadata &&
@@ -6327,6 +6249,7 @@ export class TripRepository {
           tx.$queryRaw<
             Array<{
               reimbursedEntryId: string;
+              reimbursementBaseAmount: unknown;
               amountBase: unknown;
               reimbursingLocalAmount: unknown;
               reimbursedLocalAmount: unknown;
@@ -6337,6 +6260,7 @@ export class TripRepository {
           >`
             SELECT
               a.reimbursed_entry_id AS "reimbursedEntryId",
+              re.base_amount AS "reimbursementBaseAmount",
               a.amount_base AS "amountBase",
               a.reimbursing_local_amount AS "reimbursingLocalAmount",
               a.reimbursed_local_amount AS "reimbursedLocalAmount",
@@ -6344,6 +6268,7 @@ export class TripRepository {
               a.reimbursed_fx_rate AS "reimbursedFxRate",
               te.local_currency AS "reimbursedCurrency"
             FROM trip_reimbursement_allocations a
+            INNER JOIN trip_entries re ON re.id = a.reimbursement_entry_id
             INNER JOIN trip_entries te ON te.id = a.reimbursed_entry_id
             WHERE a.trip_id = ${tripId} AND a.reimbursement_entry_id = ${id}
           `,
@@ -6387,7 +6312,14 @@ export class TripRepository {
               reimbursedFxRate: Number(row.reimbursedFxRate || 0),
               reimbursedCurrency: row.reimbursedCurrency,
             })),
-            leftoverBaseAmount: parsedLinkage?.leftoverBaseAmount ?? null,
+            leftoverBaseAmount: calculateReimbursementLeftoverBase({
+              reimbursementBaseAmount: Number(
+                asReimburser[0]?.reimbursementBaseAmount || 0,
+              ),
+              allocationBaseAmounts: asReimburser.map((row) =>
+                Number(row.amountBase || 0),
+              ),
+            }),
             leftoverCategoryId: parsedLinkage?.leftoverCategoryId ?? null,
           } as TripEntryLinkage;
         } else if (asTarget.length > 0) {

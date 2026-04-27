@@ -66,6 +66,19 @@ export function TripManualEntryModal({
 }: TripManualEntryModalProps) {
   if (!isOpen) return null;
 
+  const localCurrencyLabel =
+    form.type === "reimbursement"
+      ? "Received currency"
+      : form.type === "funding_out"
+        ? "Outgoing currency"
+        : "Spent currency";
+  const localAmountLabel =
+    form.type === "reimbursement"
+      ? "Received amount"
+      : form.type === "funding_out"
+        ? "Outgoing amount"
+        : "Spent amount";
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/50 dark:bg-black/70 p-4 flex items-center justify-center"
@@ -400,7 +413,7 @@ export function TripManualEntryModal({
           <div className="grid gap-3 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
-                Spent currency
+                {localCurrencyLabel}
               </label>
               <Select
                 value={form.localCurrency}
@@ -418,7 +431,7 @@ export function TripManualEntryModal({
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
-                Spent amount
+                {localAmountLabel}
               </label>
               <NumberInput
                 value={form.localAmount}

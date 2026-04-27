@@ -8,11 +8,14 @@ from dateutil import parser as date_parser
 
 
 def _parse_money(value: str) -> Optional[float]:
-    cleaned = re.sub(r"[^0-9.]", "", value or "")
+    raw_value = (value or "").strip()
+    is_negative = bool(re.match(r"^-", raw_value)) or bool(re.match(r"^\(.*\)$", raw_value))
+    cleaned = re.sub(r"[^0-9.]", "", raw_value)
     if not cleaned:
         return None
     try:
-        return float(cleaned)
+        amount = float(cleaned)
+        return -amount if is_negative else amount
     except ValueError:
         return None
 
@@ -24,7 +27,14 @@ def _try_parse_date(value: str) -> str:
         return value
 
 
-def _infer_direction(description: str) -> str:
+def _infer_direction(description: str, amount: Optional[float] = None, raw_text: str = "") -> str:
+    if amount is not None and amount < 0:
+        return "out"
+
+    raw_lower = raw_text.lower()
+    if amount is not None and amount > 0 and re.search(r"(^|\s)\+|\b(?:credit|cr)\b", raw_lower):
+        return "in"
+
     desc = description.lower()
     incoming_markers = ["smartexchange", "refund", "top up", "transfer in"]
     if any(marker in desc for marker in incoming_markers):
@@ -91,11 +101,12 @@ def parse(content: bytes) -> list[dict]:
     if currency_match:
         statement_currency = currency_match.group(1)
 
+    money_pattern = r"((?:[-+]?\s*\$[\d,]*\.\d{2})|(?:\(\$[\d,]*\.\d{2}\)))"
     tx_pattern_with_desc = re.compile(
-        r"^(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s+(.+?)\s+\$([\d,]*\.\d{2})\s+\$([\d,]*\.\d{2})$"
+        rf"^(\d{{1,2}}\s+[A-Za-z]{{3,9}}\s+\d{{4}})\s+(.+?)\s+{money_pattern}\s+{money_pattern}$"
     )
     tx_pattern_without_desc = re.compile(
-        r"^(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s+\$([\d,]*\.\d{2})\s+\$([\d,]*\.\d{2})$"
+        rf"^(\d{{1,2}}\s+[A-Za-z]{{3,9}}\s+\d{{4}})\s+{money_pattern}\s+{money_pattern}$"
     )
     date_line_pattern = re.compile(r"^\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}\b")
 
@@ -131,7 +142,8 @@ def parse(content: bytes) -> list[dict]:
             description = match.group(2).strip()
             amount = _parse_money(match.group(3)) or 0
             balance = _parse_money(match.group(4))
-            direction = _infer_direction(description)
+            direction = _infer_direction(description, amount, line)
+            amount_magnitude = abs(amount)
 
             metadata = {
                 "source": "pdf",
@@ -146,8 +158,8 @@ def parse(content: bytes) -> list[dict]:
             current_tx = {
                 "date": _try_parse_date(date_text),
                 "description": description,
-                "amountIn": amount if direction == "in" else None,
-                "amountOut": amount if direction == "out" else None,
+                "amountIn": amount_magnitude if direction == "in" else None,
+                "amountOut": amount_magnitude if direction == "out" else None,
                 "balance": balance,
                 "metadata": metadata,
             }
@@ -165,7 +177,8 @@ def parse(content: bytes) -> list[dict]:
             amount = _parse_money(match.group(2)) or 0
             balance = _parse_money(match.group(3))
             description = previous_line if previous_line else "YouTrip Transaction"
-            direction = _infer_direction(description)
+            direction = _infer_direction(description, amount, line)
+            amount_magnitude = abs(amount)
 
             metadata = {
                 "source": "pdf",
@@ -180,8 +193,8 @@ def parse(content: bytes) -> list[dict]:
             current_tx = {
                 "date": _try_parse_date(date_text),
                 "description": description,
-                "amountIn": amount if direction == "in" else None,
-                "amountOut": amount if direction == "out" else None,
+                "amountIn": amount_magnitude if direction == "in" else None,
+                "amountOut": amount_magnitude if direction == "out" else None,
                 "balance": balance,
                 "metadata": metadata,
             }

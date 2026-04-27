@@ -692,6 +692,8 @@ export async function importTripSpendings(
           amountBase: number;
         }>;
         leftoverCategoryId?: string | null;
+        reimbursementBaseAmount?: number | null;
+        reimbursingFxRate?: number | null;
       } | null;
       amountIn?: number;
       amountOut?: number;
